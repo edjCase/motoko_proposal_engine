@@ -314,7 +314,7 @@ module {
                 case (#percent({ percent; quorum })) {
                     let quorumThreshold = switch (quorum) {
                         case (null) 0;
-                        case (?q) calculateFromPercent(q, totalVotingPower);
+                        case (?q) calculateFromPercent(q, totalVotingPower, false);
                     };
                     // The proposal must reach the quorum threshold in any case
                     if (votedVotingPower >= quorumThreshold) {
@@ -322,10 +322,10 @@ module {
                         let voteThreshold = if (hasEnded) {
                             // If the proposal has reached the end time, it passes if the votes are above the threshold of the VOTED voting power
                             let votedPercent = votedVotingPower / totalVotingPower;
-                            calculateFromPercent(percent, votedVotingPower);
+                            calculateFromPercent(percent, votedVotingPower, true);
                         } else {
                             // If the proposal has not reached the end time, it passes if votes are above the threshold (+1) of the TOTAL voting power
-                            let votingThreshold = calculateFromPercent(percent, totalVotingPower) + 1;
+                            let votingThreshold = calculateFromPercent(percent, totalVotingPower, true);
                             if (votingThreshold >= totalVotingPower) {
                                 // Safety with low total voting power to make sure the proposal can pass
                                 totalVotingPower;
@@ -336,6 +336,9 @@ module {
                         if (proposal.votingSummary.yes > proposal.votingSummary.no and proposal.votingSummary.yes >= voteThreshold) {
                             return #passed;
                         } else if (proposal.votingSummary.no > proposal.votingSummary.yes and proposal.votingSummary.no >= voteThreshold) {
+                            return #rejected;
+                        } else if (proposal.votingSummary.yes + proposal.votingSummary.no >= totalVotingPower) {
+                            // If the proposal has reached the end time and the votes are equal, it is rejected
                             return #rejected;
                         };
                     };
@@ -384,8 +387,17 @@ module {
         };
     };
 
-    private func calculateFromPercent(percent : Nat, total : Nat) : Nat {
-        Int.abs(Float.toInt(Float.ceil((Float.fromInt(percent) / 100.0) * Float.fromInt(total))));
+    private func calculateFromPercent(percent : Nat, total : Nat, greaterThan : Bool) : Nat {
+        let threshold = Float.fromInt(percent) / 100.0 * Float.fromInt(total);
+        // If the threshold is an integer, add 1 to make sure the proposal passes
+        let ceilThreshold = Float.toInt(Float.ceil(threshold));
+        let fixedThreshold : Int = if (greaterThan and ceilThreshold == Float.toInt(Float.floor(threshold))) {
+            // If the threshold is an integer, add 1 to make sure the proposal passes
+            ceilThreshold + 1;
+        } else {
+            ceilThreshold;
+        };
+        Int.abs(fixedThreshold);
     };
 
     private func buildVotingSummary(votes : HashMap.HashMap<Principal, Types.Vote>) : VotingSummary {
