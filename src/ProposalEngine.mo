@@ -34,7 +34,8 @@ module {
         var no : Nat;
         var notVoted : Nat;
     };
-    public class Dao<system, TProposalContent>(
+
+    public class ProposalEngine<system, TProposalContent>(
         data : Types.StableData<TProposalContent>,
         onProposalExecute : Types.Proposal<TProposalContent> -> async* Result.Result<(), Text>,
         onProposalReject : Types.Proposal<TProposalContent> -> async* (),
