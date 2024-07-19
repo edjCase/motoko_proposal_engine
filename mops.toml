@@ -4,7 +4,7 @@ itertools = "0.2.1"
 
 [package]
 name = "dao-proposal-engine"
-version = "0.1.0"
+version = "0.1.1"
 description = "A library for creating, voting on and executing proposals"
 repository = "https://github.com/edjcase/motoko_proposal_engine"
 keywords = [ "dao", "proposal", "proposals", "vote", "voting" ]
