@@ -35,6 +35,22 @@ module {
         var notVoted : Nat;
     };
 
+    /// Creates a new proposal engine.
+    /// <system> is required for timers.
+    ///
+    /// ```motoko
+    /// // Define your proposal content type
+    /// type ProposalContent = { /* Your proposal type definition */ };
+    /// // Intiialize with max proposal duration of 7 days, 50% voting threshold for auto execution and 20% quorum for execution after duration
+    /// let data : Types.StableData<ProposalContent> = { proposals = [], proposalDuration = #days(7), votingThreshold = #percent({ percent = 50, quorum = ?20 }) };
+    /// // Create function that runs on execution of a proposal. Return error message on failure.
+    /// let onProposalExecute = func(proposal : Types.Proposal<ProposalContent>) : async* Result.Result<(), Text> { ... };
+    /// // Create function that runs on rejection of a proposal
+    /// let onProposalReject = func(proposal : Types.Proposal<ProposalContent>) : async* () { ... };
+    /// // Create function that runs on validation of a proposal. Return validation errors on failure.
+    /// let onProposalValidate = func(content : ProposalContent) : async* Result.Result<(), [Text]> { ... };
+    /// let proposalEngine = ProposalEngine<system, ProposalContent>(data, onProposalExecute, onProposalReject, onProposalValidate);
+    /// ```
     public class ProposalEngine<system, TProposalContent>(
         data : Types.StableData<TProposalContent>,
         onProposalExecute : Types.Proposal<TProposalContent> -> async* Result.Result<(), Text>,
@@ -76,7 +92,12 @@ module {
                 };
             };
         };
-
+        /// Returns a proposal by its Id.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let ?proposal : ?Types.Proposal<TProposalContent> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+        /// ```
         public func getProposal(id : Nat) : ?Types.Proposal<TProposalContent> {
             let ?proposal = proposals.get(id) else return null;
             ?{
@@ -92,6 +113,13 @@ module {
             };
         };
 
+        /// Retrieves a paged list of proposals.
+        ///
+        /// ```motoko
+        /// let count : Nat = 10; // Max proposals to return
+        /// let offset : Nat = 0; // Proposals to skip
+        /// let pagedResult : Types.PagedResult<Types.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
+        /// ```
         public func getProposals(count : Nat, offset : Nat) : Types.PagedResult<Types.Proposal<TProposalContent>> {
             let vals = proposals.vals()
             |> Iter.map(
@@ -115,6 +143,19 @@ module {
             };
         };
 
+        /// Casts a vote on a proposal for the specified voter.
+        /// Will auto execute/reject the proposal if the voting threshold is reached.
+        /// async* is due to potential execution of the proposal.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let voterId : Principal = ...;
+        /// let vote : Bool = true; // true for yes, false for no
+        /// switch (await* proposalEngine.vote(proposalId, voterId, vote)) {
+        ///   case (#ok) { /* Vote successful */ };
+        ///   case (#err(error)) { /* Handle error */ };
+        /// };
+        /// ```
         public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), Types.VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
             let now = Time.now();
@@ -129,7 +170,20 @@ module {
             await* voteInternal(proposal, voterId, vote, existingVote.votingPower);
             #ok;
         };
-
+        /// Creates a new proposal.
+        /// The proposer is automatically voted yes.
+        /// The proposal will be auto executed if the voting threshold is reached (from proposer).
+        /// async* is due to potential execution of the proposal and validation function.
+        ///
+        /// ```motoko
+        /// let proposerId = ...;
+        /// let content = { /* Your proposal content here */ };
+        /// let members = [...]; // Snapshot of members to vote on the proposal
+        /// switch (await* proposalEngine.createProposal(proposerId, content, members)) {
+        ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
+        ///   case (#err(error)) { /* Handle error */ };
+        /// };
+        /// ```
         public func createProposal<system>(
             proposerId : Principal,
             content : TProposalContent,
@@ -180,6 +234,26 @@ module {
                 };
             };
             #ok(proposalId);
+        };
+
+        /// Converts the current state to stable data for upgrades.
+        ///
+        /// ```motoko
+        /// let stableData : Types.StableData<ProposalContent> = proposalEngine.toStableData();
+        /// ```
+        public func toStableData() : Types.StableData<TProposalContent> {
+            let proposalsArray = proposals.entries()
+            |> Iter.map(
+                _,
+                func((_, v) : (Nat, MutableProposal<TProposalContent>)) : Types.Proposal<TProposalContent> = fromMutableProposal<TProposalContent>(v),
+            )
+            |> Iter.toArray(_);
+
+            {
+                proposals = proposalsArray;
+                proposalDuration = proposalDuration;
+                votingThreshold = votingThreshold;
+            };
         };
 
         private func voteInternal(
@@ -251,21 +325,6 @@ module {
                     #ok;
                 };
                 case (_) #alreadyEnded;
-            };
-        };
-
-        public func toStableData() : Types.StableData<TProposalContent> {
-            let proposalsArray = proposals.entries()
-            |> Iter.map(
-                _,
-                func((_, v) : (Nat, MutableProposal<TProposalContent>)) : Types.Proposal<TProposalContent> = fromMutableProposal<TProposalContent>(v),
-            )
-            |> Iter.toArray(_);
-
-            {
-                proposals = proposalsArray;
-                proposalDuration = proposalDuration;
-                votingThreshold = votingThreshold;
             };
         };
 
