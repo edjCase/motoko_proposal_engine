@@ -1,12 +1,11 @@
-import Types "Types";
 import Result "mo:base/Result";
 import Bool "mo:base/Bool";
 import GenericProposalEngine "GenericProposalEngine";
 module {
 
-    public type StableData<TProposalContent> = Types.StableData<TProposalContent, Bool>;
+    public type StableData<TProposalContent> = GenericProposalEngine.StableData<TProposalContent, Bool>;
 
-    public type Proposal<TProposalContent> = Types.Proposal<TProposalContent, Bool>;
+    public type Proposal<TProposalContent> = GenericProposalEngine.Proposal<TProposalContent, Bool>;
 
     public class BinaryProposalEngine<system, TProposalContent>(
         data : StableData<TProposalContent>,
@@ -14,7 +13,7 @@ module {
         onProposalReject : (Proposal<TProposalContent>) -> async* (),
         onProposalValidate : TProposalContent -> async* Result.Result<(), [Text]>,
     ) {
-        private func onProposalExecute(choice : ?Bool, proposal : Types.Proposal<TProposalContent, Bool>) : async* Result.Result<(), Text> {
+        private func onProposalExecute(choice : ?Bool, proposal : Proposal<TProposalContent>) : async* Result.Result<(), Text> {
             switch (choice) {
                 case (?true) await* onProposalAdopt(proposal);
                 case (?false or null) {
@@ -36,7 +35,7 @@ module {
         ///
         /// ```motoko
         /// let proposalId : Nat = 1;
-        /// let ?proposal : ?Types.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+        /// let ?proposal : ?GenericProposalEngine.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
         /// ```
         public func getProposal(id : Nat) : ?Proposal<TProposalContent> {
             internalEngine.getProposal(id);
@@ -47,9 +46,9 @@ module {
         /// ```motoko
         /// let count : Nat = 10; // Max proposals to return
         /// let offset : Nat = 0; // Proposals to skip
-        /// let pagedResult : Types.PagedResult<Types.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
+        /// let pagedResult : GenericProposalEngine.PagedResult<GenericProposalEngine.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
         /// ```
-        public func getProposals(count : Nat, offset : Nat) : Types.PagedResult<Proposal<TProposalContent>> {
+        public func getProposals(count : Nat, offset : Nat) : GenericProposalEngine.PagedResult<Proposal<TProposalContent>> {
             internalEngine.getProposals(count, offset);
         };
 
@@ -66,7 +65,7 @@ module {
         ///   case (#err(error)) { /* Handle error */ };
         /// };
         /// ```
-        public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), Types.VoteError> {
+        public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), GenericProposalEngine.VoteError> {
             await* internalEngine.vote(proposalId, voterId, vote);
         };
 
@@ -86,15 +85,19 @@ module {
         public func createProposal<system>(
             proposerId : Principal,
             content : TProposalContent,
-            members : [Types.Member],
-        ) : async* Result.Result<Nat, Types.CreateProposalError> {
+            members : [GenericProposalEngine.Member],
+        ) : async* Result.Result<Nat, GenericProposalEngine.CreateProposalError> {
             await* internalEngine.createProposal(proposerId, content, members);
+        };
+
+        public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
+            await* internalEngine.endProposal(proposalId);
         };
 
         /// Converts the current state to stable data for upgrades.
         ///
         /// ```motoko
-        /// let stableData : Types.StableData<ProposalContent> = proposalEngine.toStableData();
+        /// let stableData : GenericProposalEngine.StableData<ProposalContent> = proposalEngine.toStableData();
         /// ```
         public func toStableData() : StableData<TProposalContent> {
             internalEngine.toStableData();

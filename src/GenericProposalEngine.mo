@@ -14,20 +14,99 @@ import Order "mo:base/Order";
 import IterTools "mo:itertools/Iter";
 import Result "mo:base/Result";
 import Option "mo:base/Option";
-import Types "Types";
 
 module {
+
+    public type StableData<TProposalContent, TChoice> = {
+        proposals : [Proposal<TProposalContent, TChoice>];
+        proposalDuration : ?Duration;
+        votingThreshold : VotingThreshold;
+    };
+
+    public type PagedResult<T> = {
+        data : [T];
+        offset : Nat;
+        count : Nat;
+        total : Nat;
+    };
+
+    public type VotingThreshold = {
+        #percent : { percent : Percent; quorum : ?Percent };
+    };
+    public type Percent = Nat; // 0-100
+
+    public type Duration = {
+        #days : Nat;
+        #nanoseconds : Nat;
+    };
+
+    public type Member = {
+        votingPower : Nat;
+        id : Principal;
+    };
+
+    public type Proposal<TProposalContent, TChoice> = {
+        id : Nat;
+        proposerId : Principal;
+        timeStart : Int;
+        timeEnd : ?Int;
+        endTimerId : ?Nat;
+        content : TProposalContent;
+        votes : [(Principal, Vote<TChoice>)];
+        status : ProposalStatus<TChoice>;
+    };
+
+    public type ProposalStatus<TChoice> = {
+        #open;
+        #executing : {
+            executingTime : Time.Time;
+            choice : ?TChoice;
+        };
+        #executed : {
+            executingTime : Time.Time;
+            executedTime : Time.Time;
+            choice : ?TChoice;
+        };
+        #failedToExecute : {
+            executingTime : Time.Time;
+            failedTime : Time.Time;
+            choice : ?TChoice;
+            error : Text;
+        };
+    };
+
+    public type Vote<TChoice> = {
+        value : ?TChoice;
+        votingPower : Nat;
+    };
+
+    public type AddMemberResult = {
+        #ok;
+        #alreadyExists;
+    };
+
+    public type CreateProposalError = {
+        #notAuthorized;
+        #invalid : [Text];
+    };
+
+    public type VoteError = {
+        #notAuthorized;
+        #alreadyVoted;
+        #votingClosed;
+        #proposalNotFound;
+    };
 
     type MutableProposal<TProposalContent, TChoice> = {
         id : Nat;
         proposerId : Principal;
         timeStart : Int;
-        timeEnd : Int;
+        timeEnd : ?Int;
         var endTimerId : ?Nat;
         content : TProposalContent;
-        votes : HashMap.HashMap<Principal, Types.Vote<TChoice>>;
-        statusLog : Buffer.Buffer<Types.ProposalStatusLogEntry>;
-        votingSummary : VotingSummary<TChoice>;
+        votes : HashMap.HashMap<Principal, Vote<TChoice>>;
+        var status : ProposalStatus<TChoice>;
+        votingSummary : VotingSummary<TChoice>; // TODO remove and calculate on demand?
     };
 
     type VotingSummary<TChoice> = {
@@ -36,17 +115,17 @@ module {
     };
 
     public class GenericProposalEngine<system, TProposalContent, TChoice>(
-        data : Types.StableData<TProposalContent, TChoice>,
-        onProposalExecute : (?TChoice, Types.Proposal<TProposalContent, TChoice>) -> async* Result.Result<(), Text>,
+        data : StableData<TProposalContent, TChoice>,
+        onProposalExecute : (?TChoice, Proposal<TProposalContent, TChoice>) -> async* Result.Result<(), Text>,
         onProposalValidate : TProposalContent -> async* Result.Result<(), [Text]>,
         equalChoice : (TChoice, TChoice) -> Bool,
         hashChoice : (TChoice) -> Nat32,
     ) {
 
         let proposalsIter = data.proposals.vals()
-        |> Iter.map<Types.Proposal<TProposalContent, TChoice>, (Nat, MutableProposal<TProposalContent, TChoice>)>(
+        |> Iter.map<Proposal<TProposalContent, TChoice>, (Nat, MutableProposal<TProposalContent, TChoice>)>(
             _,
-            func(proposal : Types.Proposal<TProposalContent, TChoice>) : (Nat, MutableProposal<TProposalContent, TChoice>) {
+            func(proposal : Proposal<TProposalContent, TChoice>) : (Nat, MutableProposal<TProposalContent, TChoice>) {
                 let mutableProposal = toMutableProposal<TProposalContent, TChoice>(proposal, equalChoice, hashChoice);
                 (
                     proposal.id,
@@ -68,11 +147,18 @@ module {
                     case (?id) Timer.cancelTimer(id);
                 };
                 proposal.endTimerId := null;
-                let currentStatus = getProposalStatus(proposal.statusLog);
-                if (currentStatus == #open) {
-                    let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
-                    let endTimerId = createEndTimer<system>(proposal.id, proposalDurationNanoseconds);
-                    proposal.endTimerId := ?endTimerId;
+                switch (proposal.status) {
+                    case (#open) {
+                        switch (proposalDuration) {
+                            case (?proposalDuration) {
+                                let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
+                                let endTimerId = createEndTimer<system>(proposal.id, proposalDurationNanoseconds);
+                                proposal.endTimerId := ?endTimerId;
+                            };
+                            case (null) (); // Skip timer creation
+                        };
+                    };
+                    case (_) (); // Skip timer creation
                 };
             };
         };
@@ -80,15 +166,15 @@ module {
         ///
         /// ```motoko
         /// let proposalId : Nat = 1;
-        /// let ?proposal : ?Types.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+        /// let ?proposal : ?Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
         /// ```
-        public func getProposal(id : Nat) : ?Types.Proposal<TProposalContent, TChoice> {
+        public func getProposal(id : Nat) : ?Proposal<TProposalContent, TChoice> {
             let ?proposal = proposals.get(id) else return null;
             ?{
                 proposal with
                 endTimerId = proposal.endTimerId;
                 votes = Iter.toArray(proposal.votes.entries());
-                statusLog = Buffer.toArray(proposal.statusLog);
+                status = proposal.status;
             };
         };
 
@@ -97,17 +183,17 @@ module {
         /// ```motoko
         /// let count : Nat = 10; // Max proposals to return
         /// let offset : Nat = 0; // Proposals to skip
-        /// let pagedResult : Types.PagedResult<Types.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
+        /// let pagedResult : PagedResult<Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
         /// ```
-        public func getProposals(count : Nat, offset : Nat) : Types.PagedResult<Types.Proposal<TProposalContent, TChoice>> {
+        public func getProposals(count : Nat, offset : Nat) : PagedResult<Proposal<TProposalContent, TChoice>> {
             let vals = proposals.vals()
             |> Iter.map(
                 _,
-                func(proposal : MutableProposal<TProposalContent, TChoice>) : Types.Proposal<TProposalContent, TChoice> = fromMutableProposal(proposal),
+                func(proposal : MutableProposal<TProposalContent, TChoice>) : Proposal<TProposalContent, TChoice> = fromMutableProposal(proposal),
             )
             |> IterTools.sort(
                 _,
-                func(proposalA : Types.Proposal<TProposalContent, TChoice>, proposalB : Types.Proposal<TProposalContent, TChoice>) : Order.Order {
+                func(proposalA : Proposal<TProposalContent, TChoice>, proposalB : Proposal<TProposalContent, TChoice>) : Order.Order {
                     Int.compare(proposalA.timeStart, proposalB.timeStart);
                 },
             )
@@ -135,12 +221,23 @@ module {
         ///   case (#err(error)) { /* Handle error */ };
         /// };
         /// ```
-        public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), Types.VoteError> {
+        public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
             let now = Time.now();
-            let currentStatus = getProposalStatus(proposal.statusLog);
-            if (proposal.timeStart > now or proposal.timeEnd < now or currentStatus != #open) {
+            if (proposal.timeStart > now) {
                 return #err(#votingClosed);
+            };
+            switch (proposal.status) {
+                case (#open) ();
+                case (_) {
+                    return #err(#votingClosed);
+                };
+            };
+            switch (proposal.timeEnd) {
+                case (?timeEnd) if (timeEnd <= now) {
+                    return #err(#votingClosed);
+                };
+                case (null) ();
             };
             let ?existingVote = proposal.votes.get(voterId) else return #err(#notAuthorized); // Only allow members to vote who existed when the proposal was created
             let null = existingVote.value else return #err(#alreadyVoted);
@@ -163,8 +260,8 @@ module {
         public func createProposal<system>(
             proposerId : Principal,
             content : TProposalContent,
-            members : [Types.Member],
-        ) : async* Result.Result<Nat, Types.CreateProposalError> {
+            members : [Member],
+        ) : async* Result.Result<Nat, CreateProposalError> {
 
             switch (await* onProposalValidate(content)) {
                 case (#ok) ();
@@ -174,7 +271,7 @@ module {
             };
 
             let now = Time.now();
-            let votes = HashMap.HashMap<Principal, Types.Vote<TChoice>>(0, Principal.equal, Principal.hash);
+            let votes = HashMap.HashMap<Principal, Vote<TChoice>>(0, Principal.equal, Principal.hash);
             // Take snapshot of members at the time of proposal creation
             for (member in members.vals()) {
                 votes.put(
@@ -186,17 +283,23 @@ module {
                 );
             };
             let proposalId = nextProposalId;
-            let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
-            let endTimerId = createEndTimer<system>(proposalId, proposalDurationNanoseconds);
+            let (timeEnd, endTimerId) : (?Int, ?Nat) = switch (proposalDuration) {
+                case (?proposalDuration) {
+                    let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
+                    let timerId = createEndTimer<system>(proposalId, proposalDurationNanoseconds);
+                    (?(now + proposalDurationNanoseconds), ?timerId);
+                };
+                case (null) (null, null);
+            };
             let proposal : MutableProposal<TProposalContent, TChoice> = {
                 id = proposalId;
                 proposerId = proposerId;
                 content = content;
                 timeStart = now;
-                timeEnd = now + proposalDurationNanoseconds;
-                var endTimerId = ?endTimerId;
+                timeEnd = timeEnd;
+                var endTimerId = endTimerId;
                 votes = votes;
-                statusLog = Buffer.Buffer<Types.ProposalStatusLogEntry>(0);
+                var status = #open;
                 votingSummary = buildVotingSummary(votes, equalChoice, hashChoice);
             };
             proposals.put(nextProposalId, proposal);
@@ -204,16 +307,31 @@ module {
             #ok(proposalId);
         };
 
+        public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
+            let ?mutableProposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
+            switch (mutableProposal.status) {
+                case (#open) {
+                    let choice = switch (calculateVoteStatus(mutableProposal, true)) {
+                        case (#determined(choice)) choice;
+                        case (#undetermined) null;
+                    };
+                    await* executeProposal(mutableProposal, choice);
+                    #ok;
+                };
+                case (_) #err(#alreadyEnded);
+            };
+        };
+
         /// Converts the current state to stable data for upgrades.
         ///
         /// ```motoko
-        /// let stableData : Types.StableData<ProposalContent> = proposalEngine.toStableData();
+        /// let stableData : StableData<ProposalContent> = proposalEngine.toStableData();
         /// ```
-        public func toStableData() : Types.StableData<TProposalContent, TChoice> {
+        public func toStableData() : StableData<TProposalContent, TChoice> {
             let proposalsArray = proposals.entries()
             |> Iter.map(
                 _,
-                func((_, v) : (Nat, MutableProposal<TProposalContent, TChoice>)) : Types.Proposal<TProposalContent, TChoice> = fromMutableProposal<TProposalContent, TChoice>(v),
+                func((_, v) : (Nat, MutableProposal<TProposalContent, TChoice>)) : Proposal<TProposalContent, TChoice> = fromMutableProposal<TProposalContent, TChoice>(v),
             )
             |> Iter.toArray(_);
 
@@ -242,13 +360,13 @@ module {
                 vote,
                 Option.get(proposal.votingSummary.values.get(vote), 0) + votingPower,
             );
-            switch (calculateVoteStatus(proposal)) {
+            switch (calculateVoteStatus(proposal, false)) {
                 case (#determined(choice)) await* executeProposal(proposal, choice);
                 case (#undetermined) ();
             };
         };
 
-        private func durationToNanoseconds(duration : Types.Duration) : Nat {
+        private func durationToNanoseconds(duration : Duration) : Nat {
             switch (duration) {
                 case (#days(d)) d * 24 * 60 * 60 * 1_000_000_000;
                 case (#nanoseconds(n)) n;
@@ -262,32 +380,14 @@ module {
             Timer.setTimer<system>(
                 #nanoseconds(proposalDurationNanoseconds),
                 func() : async () {
-                    switch (await* onProposalEnd(proposalId)) {
+                    switch (await* endProposal(proposalId)) {
                         case (#ok) ();
-                        case (#alreadyEnded) {
+                        case (#err(#alreadyEnded)) {
                             Debug.print("EndTimer: Proposal already ended: " # Nat.toText(proposalId));
                         };
                     };
                 },
             );
-        };
-
-        private func onProposalEnd(proposalId : Nat) : async* {
-            #ok;
-            #alreadyEnded;
-        } {
-            let ?mutableProposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
-            switch (getProposalStatus(mutableProposal.statusLog)) {
-                case (#open) {
-                    let choice = switch (calculateVoteStatus(mutableProposal)) {
-                        case (#determined(choice)) choice;
-                        case (#undetermined) null;
-                    };
-                    await* executeProposal(mutableProposal, choice);
-                    #ok;
-                };
-                case (_) #alreadyEnded;
-            };
         };
 
         private func executeProposal(
@@ -302,35 +402,48 @@ module {
             mutableProposal.endTimerId := null;
             let proposal = fromMutableProposal(mutableProposal);
 
-            mutableProposal.statusLog.add(#executing({ time = Time.now() }));
+            let executingTime = Time.now();
+            mutableProposal.status := #executing({
+                executingTime = executingTime;
+                choice = choice;
+            });
 
-            let newStatus : Types.ProposalStatusLogEntry = try {
+            let newStatus : ProposalStatus<TChoice> = try {
                 switch (await* onProposalExecute(choice, proposal)) {
                     case (#ok) #executed({
-                        time = Time.now();
+                        executingTime = executingTime;
+                        executedTime = Time.now();
+                        choice = choice;
                     });
                     case (#err(e)) #failedToExecute({
-                        time = Time.now();
+                        executingTime = executingTime;
+                        failedTime = Time.now();
+                        choice = choice;
                         error = e;
                     });
                 };
             } catch (e) {
                 #failedToExecute({
-                    time = Time.now();
+                    executingTime = executingTime;
+                    failedTime = Time.now();
+                    choice = choice;
                     error = Error.message(e);
                 });
             };
-            mutableProposal.statusLog.add(newStatus);
+            mutableProposal.status := newStatus;
         };
 
-        private func calculateVoteStatus(proposal : MutableProposal<TProposalContent, TChoice>) : {
+        private func calculateVoteStatus(
+            proposal : MutableProposal<TProposalContent, TChoice>,
+            forceEnd : Bool,
+        ) : {
             #undetermined;
             #determined : ?TChoice;
         } {
             let votedVotingPower = proposal.votes.vals()
             |> Iter.map(
                 _,
-                func(vote : Types.Vote<TChoice>) : Nat {
+                func(vote : Vote<TChoice>) : Nat {
                     switch (vote.value) {
                         case (null) 0;
                         case (?_) vote.votingPower;
@@ -348,7 +461,12 @@ module {
                     };
                     // The proposal must reach the quorum threshold in any case
                     if (votedVotingPower >= quorumThreshold) {
-                        let hasEnded = proposal.timeEnd <= Time.now();
+                        let hasEnded = forceEnd or (
+                            switch (proposal.timeEnd) {
+                                case (?timeEnd) timeEnd <= Time.now();
+                                case (null) false;
+                            }
+                        );
                         let voteThreshold = if (hasEnded) {
                             // If the proposal has reached the end time, it passes if the votes are above the threshold of the VOTED voting power
                             let votedPercent = votedVotingPower / totalVotingPower;
@@ -396,28 +514,19 @@ module {
 
     };
 
-    private func getProposalStatus(proposalStatusLog : Buffer.Buffer<Types.ProposalStatusLogEntry>) : Types.ProposalStatusLogEntry or {
-        #open;
-    } {
-        if (proposalStatusLog.size() < 1) {
-            return #open;
-        };
-        proposalStatusLog.get(proposalStatusLog.size() - 1);
-    };
-
-    private func fromMutableProposal<TProposalContent, TChoice>(proposal : MutableProposal<TProposalContent, TChoice>) : Types.Proposal<TProposalContent, TChoice> = {
+    private func fromMutableProposal<TProposalContent, TChoice>(proposal : MutableProposal<TProposalContent, TChoice>) : Proposal<TProposalContent, TChoice> = {
         proposal with
         endTimerId = proposal.endTimerId;
         votes = Iter.toArray(proposal.votes.entries());
-        statusLog = Buffer.toArray(proposal.statusLog);
+        status = proposal.status;
     };
 
     private func toMutableProposal<TProposalContent, TChoice>(
-        proposal : Types.Proposal<TProposalContent, TChoice>,
+        proposal : Proposal<TProposalContent, TChoice>,
         equalChoice : (TChoice, TChoice) -> Bool,
         hashChoice : (TChoice) -> Nat32,
     ) : MutableProposal<TProposalContent, TChoice> {
-        let votes = HashMap.fromIter<Principal, Types.Vote<TChoice>>(
+        let votes = HashMap.fromIter<Principal, Vote<TChoice>>(
             proposal.votes.vals(),
             proposal.votes.size(),
             Principal.equal,
@@ -427,7 +536,7 @@ module {
             proposal with
             var endTimerId = proposal.endTimerId;
             votes = votes;
-            statusLog = Buffer.fromArray<Types.ProposalStatusLogEntry>(proposal.statusLog);
+            var status = proposal.status;
             votingSummary = buildVotingSummary<TChoice>(votes, equalChoice, hashChoice);
         };
     };
@@ -446,7 +555,7 @@ module {
     };
 
     private func buildVotingSummary<TChoice>(
-        votes : HashMap.HashMap<Principal, Types.Vote<TChoice>>,
+        votes : HashMap.HashMap<Principal, Vote<TChoice>>,
         equal : (TChoice, TChoice) -> Bool,
         hash : (TChoice) -> Nat32,
     ) : VotingSummary<TChoice> {
