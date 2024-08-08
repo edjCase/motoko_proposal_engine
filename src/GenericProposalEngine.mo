@@ -13,57 +13,41 @@ import Error "mo:base/Error";
 import Order "mo:base/Order";
 import IterTools "mo:itertools/Iter";
 import Result "mo:base/Result";
+import Option "mo:base/Option";
 import Types "Types";
 
 module {
 
-    type MutableProposal<TProposalContent> = {
+    type MutableProposal<TProposalContent, TChoice> = {
         id : Nat;
         proposerId : Principal;
         timeStart : Int;
         timeEnd : Int;
         var endTimerId : ?Nat;
         content : TProposalContent;
-        votes : HashMap.HashMap<Principal, Types.Vote>;
+        votes : HashMap.HashMap<Principal, Types.Vote<TChoice>>;
         statusLog : Buffer.Buffer<Types.ProposalStatusLogEntry>;
-        votingSummary : VotingSummary;
+        votingSummary : VotingSummary<TChoice>;
     };
 
-    type VotingSummary = {
-        var yes : Nat;
-        var no : Nat;
+    type VotingSummary<TChoice> = {
+        values : HashMap.HashMap<TChoice, Nat>;
         var notVoted : Nat;
     };
 
-    /// Creates a new proposal engine.
-    /// <system> is required for timers.
-    ///
-    /// ```motoko
-    /// // Define your proposal content type
-    /// type ProposalContent = { /* Your proposal type definition */ };
-    /// // Intiialize with max proposal duration of 7 days, 50% voting threshold for auto execution and 20% quorum for execution after duration
-    /// let data : Types.StableData<ProposalContent> = { proposals = [], proposalDuration = #days(7), votingThreshold = #percent({ percent = 50, quorum = ?20 }) };
-    /// // Create function that runs on execution of a proposal. Return error message on failure.
-    /// let onProposalExecute = func(proposal : Types.Proposal<ProposalContent>) : async* Result.Result<(), Text> { ... };
-    /// // Create function that runs on rejection of a proposal
-    /// let onProposalReject = func(proposal : Types.Proposal<ProposalContent>) : async* () { ... };
-    /// // Create function that runs on validation of a proposal. Return validation errors on failure.
-    /// let onProposalValidate = func(content : ProposalContent) : async* Result.Result<(), [Text]> { ... };
-    /// let proposalEngine = ProposalEngine<system, ProposalContent>(data, onProposalExecute, onProposalReject, onProposalValidate);
-    /// ```
-    public class ProposalEngine<system, TProposalContent>(
-        data : Types.StableData<TProposalContent>,
-        onProposalExecute : Types.Proposal<TProposalContent> -> async* Result.Result<(), Text>,
-        onProposalReject : Types.Proposal<TProposalContent> -> async* (),
+    public class GenericProposalEngine<system, TProposalContent, TChoice>(
+        data : Types.StableData<TProposalContent, TChoice>,
+        onProposalExecute : (?TChoice, Types.Proposal<TProposalContent, TChoice>) -> async* Result.Result<(), Text>,
         onProposalValidate : TProposalContent -> async* Result.Result<(), [Text]>,
+        equalChoice : (TChoice, TChoice) -> Bool,
+        hashChoice : (TChoice) -> Nat32,
     ) {
-        func hashNat(n : Nat) : Nat32 = Nat32.fromNat(n); // TODO
 
         let proposalsIter = data.proposals.vals()
-        |> Iter.map<Types.Proposal<TProposalContent>, (Nat, MutableProposal<TProposalContent>)>(
+        |> Iter.map<Types.Proposal<TProposalContent, TChoice>, (Nat, MutableProposal<TProposalContent, TChoice>)>(
             _,
-            func(proposal : Types.Proposal<TProposalContent>) : (Nat, MutableProposal<TProposalContent>) {
-                let mutableProposal = toMutableProposal(proposal);
+            func(proposal : Types.Proposal<TProposalContent, TChoice>) : (Nat, MutableProposal<TProposalContent, TChoice>) {
+                let mutableProposal = toMutableProposal<TProposalContent, TChoice>(proposal, equalChoice, hashChoice);
                 (
                     proposal.id,
                     mutableProposal,
@@ -71,7 +55,7 @@ module {
             },
         );
 
-        var proposals = HashMap.fromIter<Nat, MutableProposal<TProposalContent>>(proposalsIter, 0, Nat.equal, hashNat);
+        var proposals = HashMap.fromIter<Nat, MutableProposal<TProposalContent, TChoice>>(proposalsIter, 0, Nat.equal, Nat32.fromNat);
         var nextProposalId = data.proposals.size() + 1; // TODO make last proposal + 1
 
         var proposalDuration = data.proposalDuration;
@@ -96,20 +80,15 @@ module {
         ///
         /// ```motoko
         /// let proposalId : Nat = 1;
-        /// let ?proposal : ?Types.Proposal<TProposalContent> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+        /// let ?proposal : ?Types.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
         /// ```
-        public func getProposal(id : Nat) : ?Types.Proposal<TProposalContent> {
+        public func getProposal(id : Nat) : ?Types.Proposal<TProposalContent, TChoice> {
             let ?proposal = proposals.get(id) else return null;
             ?{
                 proposal with
                 endTimerId = proposal.endTimerId;
                 votes = Iter.toArray(proposal.votes.entries());
                 statusLog = Buffer.toArray(proposal.statusLog);
-                votingSummary = {
-                    yes = proposal.votingSummary.yes;
-                    no = proposal.votingSummary.no;
-                    notVoted = proposal.votingSummary.notVoted;
-                };
             };
         };
 
@@ -120,15 +99,15 @@ module {
         /// let offset : Nat = 0; // Proposals to skip
         /// let pagedResult : Types.PagedResult<Types.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
         /// ```
-        public func getProposals(count : Nat, offset : Nat) : Types.PagedResult<Types.Proposal<TProposalContent>> {
+        public func getProposals(count : Nat, offset : Nat) : Types.PagedResult<Types.Proposal<TProposalContent, TChoice>> {
             let vals = proposals.vals()
             |> Iter.map(
                 _,
-                func(proposal : MutableProposal<TProposalContent>) : Types.Proposal<TProposalContent> = fromMutableProposal(proposal),
+                func(proposal : MutableProposal<TProposalContent, TChoice>) : Types.Proposal<TProposalContent, TChoice> = fromMutableProposal(proposal),
             )
             |> IterTools.sort(
                 _,
-                func(proposalA : Types.Proposal<TProposalContent>, proposalB : Types.Proposal<TProposalContent>) : Order.Order {
+                func(proposalA : Types.Proposal<TProposalContent, TChoice>, proposalB : Types.Proposal<TProposalContent, TChoice>) : Order.Order {
                     Int.compare(proposalA.timeStart, proposalB.timeStart);
                 },
             )
@@ -156,7 +135,7 @@ module {
         ///   case (#err(error)) { /* Handle error */ };
         /// };
         /// ```
-        public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), Types.VoteError> {
+        public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), Types.VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
             let now = Time.now();
             let currentStatus = getProposalStatus(proposal.statusLog);
@@ -164,15 +143,12 @@ module {
                 return #err(#votingClosed);
             };
             let ?existingVote = proposal.votes.get(voterId) else return #err(#notAuthorized); // Only allow members to vote who existed when the proposal was created
-            if (existingVote.value != null) {
-                return #err(#alreadyVoted);
-            };
+            let null = existingVote.value else return #err(#alreadyVoted);
             await* voteInternal(proposal, voterId, vote, existingVote.votingPower);
             #ok;
         };
         /// Creates a new proposal.
-        /// The proposer is automatically voted yes.
-        /// The proposal will be auto executed if the voting threshold is reached (from proposer).
+        /// The proposer does NOT automatically vote on the proposal.
         /// async* is due to potential execution of the proposal and validation function.
         ///
         /// ```motoko
@@ -198,7 +174,7 @@ module {
             };
 
             let now = Time.now();
-            let votes = HashMap.HashMap<Principal, Types.Vote>(0, Principal.equal, Principal.hash);
+            let votes = HashMap.HashMap<Principal, Types.Vote<TChoice>>(0, Principal.equal, Principal.hash);
             // Take snapshot of members at the time of proposal creation
             for (member in members.vals()) {
                 votes.put(
@@ -212,7 +188,7 @@ module {
             let proposalId = nextProposalId;
             let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
             let endTimerId = createEndTimer<system>(proposalId, proposalDurationNanoseconds);
-            let proposal : MutableProposal<TProposalContent> = {
+            let proposal : MutableProposal<TProposalContent, TChoice> = {
                 id = proposalId;
                 proposerId = proposerId;
                 content = content;
@@ -221,18 +197,10 @@ module {
                 var endTimerId = ?endTimerId;
                 votes = votes;
                 statusLog = Buffer.Buffer<Types.ProposalStatusLogEntry>(0);
-                votingSummary = buildVotingSummary(votes);
+                votingSummary = buildVotingSummary(votes, equalChoice, hashChoice);
             };
             proposals.put(nextProposalId, proposal);
             nextProposalId += 1;
-            // Automatically vote yes for the proposer
-            switch (IterTools.find(members.vals(), func(m : Types.Member) : Bool { m.id == proposerId })) {
-                case (null) (); // Skip if proposer is not a member
-                case (?proposerMember) {
-                    // Vote yes for proposer
-                    await* voteInternal(proposal, proposerId, true, proposerMember.votingPower);
-                };
-            };
             #ok(proposalId);
         };
 
@@ -241,11 +209,11 @@ module {
         /// ```motoko
         /// let stableData : Types.StableData<ProposalContent> = proposalEngine.toStableData();
         /// ```
-        public func toStableData() : Types.StableData<TProposalContent> {
+        public func toStableData() : Types.StableData<TProposalContent, TChoice> {
             let proposalsArray = proposals.entries()
             |> Iter.map(
                 _,
-                func((_, v) : (Nat, MutableProposal<TProposalContent>)) : Types.Proposal<TProposalContent> = fromMutableProposal<TProposalContent>(v),
+                func((_, v) : (Nat, MutableProposal<TProposalContent, TChoice>)) : Types.Proposal<TProposalContent, TChoice> = fromMutableProposal<TProposalContent, TChoice>(v),
             )
             |> Iter.toArray(_);
 
@@ -257,9 +225,9 @@ module {
         };
 
         private func voteInternal(
-            proposal : MutableProposal<TProposalContent>,
+            proposal : MutableProposal<TProposalContent, TChoice>,
             voterId : Principal,
-            vote : Bool,
+            vote : TChoice,
             votingPower : Nat,
         ) : async* () {
             proposal.votes.put(
@@ -270,18 +238,12 @@ module {
                 },
             );
             proposal.votingSummary.notVoted -= votingPower;
-            if (vote) {
-                proposal.votingSummary.yes += votingPower;
-            } else {
-                proposal.votingSummary.no += votingPower;
-            };
+            proposal.votingSummary.values.put(
+                vote,
+                Option.get(proposal.votingSummary.values.get(vote), 0) + votingPower,
+            );
             switch (calculateVoteStatus(proposal)) {
-                case (#passed) {
-                    await* executeOrRejectProposal(proposal, true);
-                };
-                case (#rejected) {
-                    await* executeOrRejectProposal(proposal, false);
-                };
+                case (#determined(choice)) await* executeProposal(proposal, choice);
                 case (#undetermined) ();
             };
         };
@@ -317,18 +279,21 @@ module {
             let ?mutableProposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
             switch (getProposalStatus(mutableProposal.statusLog)) {
                 case (#open) {
-                    let passed = switch (calculateVoteStatus(mutableProposal)) {
-                        case (#passed) true;
-                        case (#rejected or #undetermined) false;
+                    let choice = switch (calculateVoteStatus(mutableProposal)) {
+                        case (#determined(choice)) choice;
+                        case (#undetermined) null;
                     };
-                    await* executeOrRejectProposal(mutableProposal, passed);
+                    await* executeProposal(mutableProposal, choice);
                     #ok;
                 };
                 case (_) #alreadyEnded;
             };
         };
 
-        private func executeOrRejectProposal(mutableProposal : MutableProposal<TProposalContent>, execute : Bool) : async* () {
+        private func executeProposal(
+            mutableProposal : MutableProposal<TProposalContent, TChoice>,
+            choice : ?TChoice,
+        ) : async* () {
             // TODO executing
             switch (mutableProposal.endTimerId) {
                 case (null) ();
@@ -336,38 +301,44 @@ module {
             };
             mutableProposal.endTimerId := null;
             let proposal = fromMutableProposal(mutableProposal);
-            if (execute) {
-                mutableProposal.statusLog.add(#executing({ time = Time.now() }));
 
-                let newStatus : Types.ProposalStatusLogEntry = try {
-                    switch (await* onProposalExecute(proposal)) {
-                        case (#ok) #executed({
-                            time = Time.now();
-                        });
-                        case (#err(e)) #failedToExecute({
-                            time = Time.now();
-                            error = e;
-                        });
-                    };
-                } catch (e) {
-                    #failedToExecute({
+            mutableProposal.statusLog.add(#executing({ time = Time.now() }));
+
+            let newStatus : Types.ProposalStatusLogEntry = try {
+                switch (await* onProposalExecute(choice, proposal)) {
+                    case (#ok) #executed({
                         time = Time.now();
-                        error = Error.message(e);
+                    });
+                    case (#err(e)) #failedToExecute({
+                        time = Time.now();
+                        error = e;
                     });
                 };
-                mutableProposal.statusLog.add(newStatus);
-            } else {
-                mutableProposal.statusLog.add(#rejected({ time = Time.now() }));
-                await* onProposalReject(proposal);
+            } catch (e) {
+                #failedToExecute({
+                    time = Time.now();
+                    error = Error.message(e);
+                });
             };
+            mutableProposal.statusLog.add(newStatus);
         };
 
-        private func calculateVoteStatus(proposal : MutableProposal<TProposalContent>) : {
+        private func calculateVoteStatus(proposal : MutableProposal<TProposalContent, TChoice>) : {
             #undetermined;
-            #passed;
-            #rejected;
+            #determined : ?TChoice;
         } {
-            let votedVotingPower = proposal.votingSummary.yes + proposal.votingSummary.no;
+            let votedVotingPower = proposal.votes.vals()
+            |> Iter.map(
+                _,
+                func(vote : Types.Vote<TChoice>) : Nat {
+                    switch (vote.value) {
+                        case (null) 0;
+                        case (?_) vote.votingPower;
+                    };
+                },
+            )
+            |> IterTools.sum(_, func(a : Nat, b : Nat) : Nat { a + b })
+            |> Option.get(_, 0);
             let totalVotingPower = votedVotingPower + proposal.votingSummary.notVoted;
             switch (votingThreshold) {
                 case (#percent({ percent; quorum })) {
@@ -392,13 +363,29 @@ module {
                                 votingThreshold;
                             };
                         };
-                        if (proposal.votingSummary.yes > proposal.votingSummary.no and proposal.votingSummary.yes >= voteThreshold) {
-                            return #passed;
-                        } else if (proposal.votingSummary.no > proposal.votingSummary.yes and proposal.votingSummary.no >= voteThreshold) {
-                            return #rejected;
-                        } else if (proposal.votingSummary.yes + proposal.votingSummary.no >= totalVotingPower) {
-                            // If the proposal has reached the end time and the votes are equal, it is rejected
-                            return #rejected;
+                        let pluralityChoices = {
+                            var votingPower = 0;
+                            choices = Buffer.Buffer<TChoice>(1);
+                        };
+                        for (choice in proposal.votingSummary.values.keys()) {
+                            let votingPower = Option.get(proposal.votingSummary.values.get(choice), 0);
+                            if (votingPower > pluralityChoices.votingPower) {
+                                pluralityChoices.votingPower := votingPower;
+                                pluralityChoices.choices.clear();
+                                pluralityChoices.choices.add(choice);
+                            } else if (votingPower == pluralityChoices.votingPower) {
+                                pluralityChoices.choices.add(choice);
+                            };
+                        };
+                        if (pluralityChoices.choices.size() == 1) {
+                            if (pluralityChoices.votingPower >= voteThreshold) {
+                                return #determined(?pluralityChoices.choices.get(0));
+                            };
+                        } else if (pluralityChoices.choices.size() > 1) {
+                            // If everyone has voted and there is a tie -> undetermined
+                            if (proposal.votingSummary.notVoted <= 0) {
+                                return #determined(null);
+                            };
                         };
                     };
                 };
@@ -418,20 +405,19 @@ module {
         proposalStatusLog.get(proposalStatusLog.size() - 1);
     };
 
-    private func fromMutableProposal<TProposalContent>(proposal : MutableProposal<TProposalContent>) : Types.Proposal<TProposalContent> = {
+    private func fromMutableProposal<TProposalContent, TChoice>(proposal : MutableProposal<TProposalContent, TChoice>) : Types.Proposal<TProposalContent, TChoice> = {
         proposal with
         endTimerId = proposal.endTimerId;
         votes = Iter.toArray(proposal.votes.entries());
         statusLog = Buffer.toArray(proposal.statusLog);
-        votingSummary = {
-            yes = proposal.votingSummary.yes;
-            no = proposal.votingSummary.no;
-            notVoted = proposal.votingSummary.notVoted;
-        };
     };
 
-    private func toMutableProposal<TProposalContent>(proposal : Types.Proposal<TProposalContent>) : MutableProposal<TProposalContent> {
-        let votes = HashMap.fromIter<Principal, Types.Vote>(
+    private func toMutableProposal<TProposalContent, TChoice>(
+        proposal : Types.Proposal<TProposalContent, TChoice>,
+        equalChoice : (TChoice, TChoice) -> Bool,
+        hashChoice : (TChoice) -> Nat32,
+    ) : MutableProposal<TProposalContent, TChoice> {
+        let votes = HashMap.fromIter<Principal, Types.Vote<TChoice>>(
             proposal.votes.vals(),
             proposal.votes.size(),
             Principal.equal,
@@ -442,7 +428,7 @@ module {
             var endTimerId = proposal.endTimerId;
             votes = votes;
             statusLog = Buffer.fromArray<Types.ProposalStatusLogEntry>(proposal.statusLog);
-            votingSummary = buildVotingSummary(votes);
+            votingSummary = buildVotingSummary<TChoice>(votes, equalChoice, hashChoice);
         };
     };
 
@@ -459,10 +445,13 @@ module {
         Int.abs(fixedThreshold);
     };
 
-    private func buildVotingSummary(votes : HashMap.HashMap<Principal, Types.Vote>) : VotingSummary {
+    private func buildVotingSummary<TChoice>(
+        votes : HashMap.HashMap<Principal, Types.Vote<TChoice>>,
+        equal : (TChoice, TChoice) -> Bool,
+        hash : (TChoice) -> Nat32,
+    ) : VotingSummary<TChoice> {
         let votingSummary = {
-            var yes = 0;
-            var no = 0;
+            values = HashMap.HashMap<TChoice, Nat>(2, equal, hash);
             var notVoted = 0;
         };
 
@@ -471,11 +460,9 @@ module {
                 case (null) {
                     votingSummary.notVoted += vote.votingPower;
                 };
-                case (?true) {
-                    votingSummary.yes += vote.votingPower;
-                };
-                case (?false) {
-                    votingSummary.no += vote.votingPower;
+                case (?v) {
+                    let currentVotingPower = Option.get(votingSummary.values.get(v), 0);
+                    votingSummary.values.put(v, currentVotingPower + vote.votingPower);
                 };
             };
         };

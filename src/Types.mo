@@ -1,8 +1,8 @@
 import Time "mo:base/Time";
 module {
 
-    public type StableData<TProposalContent> = {
-        proposals : [Proposal<TProposalContent>];
+    public type StableData<TProposalContent, TVote> = {
+        proposals : [Proposal<TProposalContent, TVote>];
         proposalDuration : Duration;
         votingThreshold : VotingThreshold;
     };
@@ -29,14 +29,14 @@ module {
         id : Principal;
     };
 
-    public type Proposal<TProposalContent> = {
+    public type Proposal<TProposalContent, TVote> = {
         id : Nat;
         proposerId : Principal;
         timeStart : Int;
         timeEnd : Int;
         endTimerId : ?Nat;
         content : TProposalContent;
-        votes : [(Principal, Vote)];
+        votes : [(Principal, Vote<TVote>)];
         statusLog : [ProposalStatusLogEntry];
     };
 
@@ -56,8 +56,8 @@ module {
         };
     };
 
-    public type Vote = {
-        value : ?Bool;
+    public type Vote<T> = {
+        value : ?T;
         votingPower : Nat;
     };
 
