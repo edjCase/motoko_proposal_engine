@@ -27,7 +27,7 @@ module {
         data : [T];
         offset : Nat;
         count : Nat;
-        total : Nat;
+        totalCount : Nat;
     };
 
     public type VotingThreshold = {
@@ -209,7 +209,7 @@ module {
                 data = vals;
                 offset = offset;
                 count = count;
-                total = proposals.size();
+                totalCount = proposals.size();
             };
         };
 
