@@ -7,6 +7,26 @@ module {
 
     public type Proposal<TProposalContent> = GenericProposalEngine.Proposal<TProposalContent, Bool>;
 
+    public type VotingThreshold = GenericProposalEngine.VotingThreshold;
+
+    public type Duration = GenericProposalEngine.Duration;
+
+    public type Member = GenericProposalEngine.Member;
+
+    public type ProposalStatus = GenericProposalEngine.ProposalStatus<Bool>;
+
+    public type Vote = GenericProposalEngine.Vote<Bool>;
+
+    public type VotingSummary = GenericProposalEngine.VotingSummary<Bool>;
+
+    public type ChoiceVotingPower = GenericProposalEngine.ChoiceVotingPower<Bool>;
+
+    public type AddMemberResult = GenericProposalEngine.AddMemberResult;
+
+    public type CreateProposalError = GenericProposalEngine.CreateProposalError;
+
+    public type VoteError = GenericProposalEngine.VoteError;
+
     public class ProposalEngine<system, TProposalContent>(
         data : StableData<TProposalContent>,
         onProposalAdopt : (Proposal<TProposalContent>) -> async* Result.Result<(), Text>,
