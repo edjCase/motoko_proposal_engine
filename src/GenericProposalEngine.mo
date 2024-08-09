@@ -114,7 +114,7 @@ module {
         var notVoted : Nat;
     };
 
-    public class GenericProposalEngine<system, TProposalContent, TChoice>(
+    public class ProposalEngine<system, TProposalContent, TChoice>(
         data : StableData<TProposalContent, TChoice>,
         onProposalExecute : (?TChoice, Proposal<TProposalContent, TChoice>) -> async* Result.Result<(), Text>,
         onProposalValidate : TProposalContent -> async* Result.Result<(), [Text]>,

@@ -7,7 +7,7 @@ module {
 
     public type Proposal<TProposalContent> = GenericProposalEngine.Proposal<TProposalContent, Bool>;
 
-    public class BinaryProposalEngine<system, TProposalContent>(
+    public class ProposalEngine<system, TProposalContent>(
         data : StableData<TProposalContent>,
         onProposalAdopt : (Proposal<TProposalContent>) -> async* Result.Result<(), Text>,
         onProposalReject : (Proposal<TProposalContent>) -> async* (),
@@ -23,7 +23,7 @@ module {
             };
         };
 
-        let internalEngine = GenericProposalEngine.GenericProposalEngine<system, TProposalContent, Bool>(
+        let internalEngine = GenericProposalEngine.ProposalEngine<system, TProposalContent, Bool>(
             data,
             onProposalExecute,
             onProposalValidate,
