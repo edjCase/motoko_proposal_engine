@@ -76,7 +76,7 @@ module {
     };
 
     public type Vote<TChoice> = {
-        value : ?TChoice;
+        choice : ?TChoice;
         votingPower : Nat;
     };
 
@@ -255,7 +255,7 @@ module {
                 case (null) ();
             };
             let ?existingVote = proposal.votes.get(voterId) else return #err(#notAuthorized); // Only allow members to vote who existed when the proposal was created
-            let null = existingVote.value else return #err(#alreadyVoted);
+            let null = existingVote.choice else return #err(#alreadyVoted);
             await* voteInternal(proposal, voterId, vote, existingVote.votingPower);
             #ok;
         };
@@ -292,7 +292,7 @@ module {
                 votes.put(
                     member.id,
                     {
-                        value = null;
+                        choice = null;
                         votingPower = member.votingPower;
                     },
                 );
@@ -360,13 +360,13 @@ module {
         private func voteInternal(
             proposal : MutableProposal<TProposalContent, TChoice>,
             voterId : Principal,
-            vote : TChoice,
+            choice : TChoice,
             votingPower : Nat,
         ) : async* () {
             proposal.votes.put(
                 voterId,
                 {
-                    value = ?vote;
+                    choice = ?choice;
                     votingPower = votingPower;
                 },
             );
@@ -558,13 +558,13 @@ module {
         var undecidedVotingPower = 0;
         var totalVotingPower = 0;
         for (vote in votes.vals()) {
-            switch (vote.value) {
+            switch (vote.choice) {
                 case (null) {
                     undecidedVotingPower += vote.votingPower;
                 };
-                case (?v) {
-                    let currentVotingPower = Option.get(choices.get(v), 0);
-                    choices.put(v, currentVotingPower + vote.votingPower);
+                case (?choice) {
+                    let currentVotingPower = Option.get(choices.get(choice), 0);
+                    choices.put(choice, currentVotingPower + vote.votingPower);
                 };
             };
             totalVotingPower += vote.votingPower;
