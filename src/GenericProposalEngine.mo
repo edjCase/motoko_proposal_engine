@@ -81,12 +81,12 @@ module {
     };
 
     public type VotingSummary<TChoice> = {
-        choices : [ChoiceSummary<TChoice>];
+        votingPowerByChoice : [ChoiceVotingPower<TChoice>];
         totalVotingPower : Nat;
         undecidedVotingPower : Nat;
     };
 
-    public type ChoiceSummary<TChoice> = {
+    public type ChoiceVotingPower<TChoice> = {
         choice : TChoice;
         votingPower : Nat;
     };
@@ -450,7 +450,7 @@ module {
             #undetermined;
             #determined : ?TChoice;
         } {
-            let { totalVotingPower; undecidedVotingPower; choices } = buildVotingSummary(proposal.votes, equalChoice, hashChoice);
+            let { totalVotingPower; undecidedVotingPower; votingPowerByChoice } = buildVotingSummary(proposal.votes, equalChoice, hashChoice);
             let votedVotingPower : Nat = totalVotingPower - undecidedVotingPower;
             switch (votingThreshold) {
                 case (#percent({ percent; quorum })) {
@@ -484,7 +484,7 @@ module {
                             var votingPower = 0;
                             choices = Buffer.Buffer<TChoice>(1);
                         };
-                        for (choice in choices.vals()) {
+                        for (choice in votingPowerByChoice.vals()) {
                             if (choice.votingPower > pluralityChoices.votingPower) {
                                 pluralityChoices.votingPower := choice.votingPower;
                                 pluralityChoices.choices.clear();
@@ -571,10 +571,10 @@ module {
         };
 
         {
-            choices = choices.entries()
+            votingPowerByChoice = choices.entries()
             |> Iter.map(
                 _,
-                func((choice, votingPower) : (TChoice, Nat)) : ChoiceSummary<TChoice> = {
+                func((choice, votingPower) : (TChoice, Nat)) : ChoiceVotingPower<TChoice> = {
                     choice = choice;
                     votingPower = votingPower;
                 },
