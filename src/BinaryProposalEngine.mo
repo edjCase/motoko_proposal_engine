@@ -52,6 +52,10 @@ module {
             internalEngine.getProposals(count, offset);
         };
 
+        public func getVote(proposalId : Nat, voterId : Principal) : ?GenericProposalEngine.Vote<Bool> {
+            internalEngine.getVote(proposalId, voterId);
+        };
+
         /// Casts a vote on a proposal for the specified voter.
         /// Will auto execute/reject the proposal if the voting threshold is reached.
         /// async* is due to potential execution of the proposal.
