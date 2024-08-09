@@ -80,6 +80,17 @@ module {
         votingPower : Nat;
     };
 
+    public type VotingSummary<TChoice> = {
+        choices : [ChoiceSummary<TChoice>];
+        totalVotingPower : Nat;
+        undecidedVotingPower : Nat;
+    };
+
+    public type ChoiceSummary<TChoice> = {
+        choice : TChoice;
+        votingPower : Nat;
+    };
+
     public type AddMemberResult = {
         #ok;
         #alreadyExists;
@@ -106,12 +117,6 @@ module {
         content : TProposalContent;
         votes : HashMap.HashMap<Principal, Vote<TChoice>>;
         var status : ProposalStatus<TChoice>;
-        votingSummary : VotingSummary<TChoice>; // TODO remove and calculate on demand?
-    };
-
-    type VotingSummary<TChoice> = {
-        values : HashMap.HashMap<TChoice, Nat>;
-        var notVoted : Nat;
     };
 
     public class ProposalEngine<system, TProposalContent, TChoice>(
@@ -126,7 +131,7 @@ module {
         |> Iter.map<Proposal<TProposalContent, TChoice>, (Nat, MutableProposal<TProposalContent, TChoice>)>(
             _,
             func(proposal : Proposal<TProposalContent, TChoice>) : (Nat, MutableProposal<TProposalContent, TChoice>) {
-                let mutableProposal = toMutableProposal<TProposalContent, TChoice>(proposal, equalChoice, hashChoice);
+                let mutableProposal = toMutableProposal<TProposalContent, TChoice>(proposal);
                 (
                     proposal.id,
                     mutableProposal,
@@ -211,6 +216,11 @@ module {
         public func getVote(proposalId : Nat, voterId : Principal) : ?Vote<TChoice> {
             let ?proposal = proposals.get(proposalId) else return null;
             proposal.votes.get(voterId);
+        };
+
+        public func getVoteSummary(proposalId : Nat) : VotingSummary<TChoice> {
+            let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
+            buildVotingSummary(proposal.votes, equalChoice, hashChoice);
         };
 
         /// Casts a vote on a proposal for the specified voter.
@@ -360,11 +370,6 @@ module {
                     votingPower = votingPower;
                 },
             );
-            proposal.votingSummary.notVoted -= votingPower;
-            proposal.votingSummary.values.put(
-                vote,
-                Option.get(proposal.votingSummary.values.get(vote), 0) + votingPower,
-            );
             switch (calculateVoteStatus(proposal, false)) {
                 case (#determined(choice)) await* executeProposal(proposal, choice);
                 case (#undetermined) ();
@@ -445,19 +450,8 @@ module {
             #undetermined;
             #determined : ?TChoice;
         } {
-            let votedVotingPower = proposal.votes.vals()
-            |> Iter.map(
-                _,
-                func(vote : Vote<TChoice>) : Nat {
-                    switch (vote.value) {
-                        case (null) 0;
-                        case (?_) vote.votingPower;
-                    };
-                },
-            )
-            |> IterTools.sum(_, func(a : Nat, b : Nat) : Nat { a + b })
-            |> Option.get(_, 0);
-            let totalVotingPower = votedVotingPower + proposal.votingSummary.notVoted;
+            let { totalVotingPower; undecidedVotingPower; choices } = buildVotingSummary(proposal.votes, equalChoice, hashChoice);
+            let votedVotingPower : Nat = totalVotingPower - undecidedVotingPower;
             switch (votingThreshold) {
                 case (#percent({ percent; quorum })) {
                     let quorumThreshold = switch (quorum) {
@@ -490,14 +484,13 @@ module {
                             var votingPower = 0;
                             choices = Buffer.Buffer<TChoice>(1);
                         };
-                        for (choice in proposal.votingSummary.values.keys()) {
-                            let votingPower = Option.get(proposal.votingSummary.values.get(choice), 0);
-                            if (votingPower > pluralityChoices.votingPower) {
-                                pluralityChoices.votingPower := votingPower;
+                        for (choice in choices.vals()) {
+                            if (choice.votingPower > pluralityChoices.votingPower) {
+                                pluralityChoices.votingPower := choice.votingPower;
                                 pluralityChoices.choices.clear();
-                                pluralityChoices.choices.add(choice);
-                            } else if (votingPower == pluralityChoices.votingPower) {
-                                pluralityChoices.choices.add(choice);
+                                pluralityChoices.choices.add(choice.choice);
+                            } else if (choice.votingPower == pluralityChoices.votingPower) {
+                                pluralityChoices.choices.add(choice.choice);
                             };
                         };
                         if (pluralityChoices.choices.size() == 1) {
@@ -506,7 +499,7 @@ module {
                             };
                         } else if (pluralityChoices.choices.size() > 1) {
                             // If everyone has voted and there is a tie -> undetermined
-                            if (proposal.votingSummary.notVoted <= 0) {
+                            if (undecidedVotingPower <= 0) {
                                 return #determined(null);
                             };
                         };
@@ -527,9 +520,7 @@ module {
     };
 
     private func toMutableProposal<TProposalContent, TChoice>(
-        proposal : Proposal<TProposalContent, TChoice>,
-        equalChoice : (TChoice, TChoice) -> Bool,
-        hashChoice : (TChoice) -> Nat32,
+        proposal : Proposal<TProposalContent, TChoice>
     ) : MutableProposal<TProposalContent, TChoice> {
         let votes = HashMap.fromIter<Principal, Vote<TChoice>>(
             proposal.votes.vals(),
@@ -542,7 +533,6 @@ module {
             var endTimerId = proposal.endTimerId;
             votes = votes;
             var status = proposal.status;
-            votingSummary = buildVotingSummary<TChoice>(votes, equalChoice, hashChoice);
         };
     };
 
@@ -564,23 +554,35 @@ module {
         equal : (TChoice, TChoice) -> Bool,
         hash : (TChoice) -> Nat32,
     ) : VotingSummary<TChoice> {
-        let votingSummary = {
-            values = HashMap.HashMap<TChoice, Nat>(2, equal, hash);
-            var notVoted = 0;
-        };
-
+        let choices = HashMap.HashMap<TChoice, Nat>(5, equal, hash);
+        var undecidedVotingPower = 0;
+        var totalVotingPower = 0;
         for (vote in votes.vals()) {
             switch (vote.value) {
                 case (null) {
-                    votingSummary.notVoted += vote.votingPower;
+                    undecidedVotingPower += vote.votingPower;
                 };
                 case (?v) {
-                    let currentVotingPower = Option.get(votingSummary.values.get(v), 0);
-                    votingSummary.values.put(v, currentVotingPower + vote.votingPower);
+                    let currentVotingPower = Option.get(choices.get(v), 0);
+                    choices.put(v, currentVotingPower + vote.votingPower);
                 };
             };
+            totalVotingPower += vote.votingPower;
         };
-        votingSummary;
+
+        {
+            choices = choices.entries()
+            |> Iter.map(
+                _,
+                func((choice, votingPower) : (TChoice, Nat)) : ChoiceSummary<TChoice> = {
+                    choice = choice;
+                    votingPower = votingPower;
+                },
+            )
+            |> Iter.toArray(_);
+            totalVotingPower = totalVotingPower;
+            undecidedVotingPower = undecidedVotingPower;
+        };
     };
 
 };
