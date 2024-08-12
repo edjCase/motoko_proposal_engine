@@ -88,6 +88,17 @@ module {
         #undetermined;
     };
 
+    public func getVote<TProposalContent, TChoice>(
+        proposal : Proposal<TProposalContent, TChoice>,
+        voterId : Principal,
+    ) : ?Vote<TChoice> {
+        let ?(_, vote) = IterTools.find(
+            proposal.votes.vals(),
+            func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
+        ) else return null;
+        ?vote;
+    };
+
     public func vote<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,

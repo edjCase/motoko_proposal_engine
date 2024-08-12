@@ -147,14 +147,10 @@ module {
         public func getVote(proposalId : Nat, voterId : Principal) : ?Vote<TChoice> {
             let ?proposal = proposals.get(proposalId) else return null;
 
-            let ?(_, vote) = IterTools.find(
-                proposal.votes.vals(),
-                func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
-            ) else return null;
-            ?vote;
+            ExtendedProposal.getVote<TProposalContent, TChoice>(proposal, voterId);
         };
 
-        public func getVoteSummary(proposalId : Nat) : VotingSummary<TChoice> {
+        public func buildVoteSummary(proposalId : Nat) : VotingSummary<TChoice> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
             ExtendedProposal.buildVotingSummary(proposal.votes, equalChoice, hashChoice);
         };

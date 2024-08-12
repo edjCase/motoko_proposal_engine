@@ -27,6 +27,16 @@ module {
 
     public type ChoiceStatus = ExtendedProposal.ChoiceStatus<Bool>;
 
+    public func getVote<TProposalContent>(
+        proposal : Proposal<TProposalContent>,
+        voterId : Principal,
+    ) : ?Vote {
+        ExtendedProposal.getVote(
+            proposal,
+            voterId,
+        );
+    };
+
     public func vote<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         voterId : Principal,

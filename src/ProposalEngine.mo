@@ -1,20 +1,21 @@
 import Result "mo:base/Result";
 import Bool "mo:base/Bool";
 import ExtendedProposalEngine "ExtendedProposalEngine";
+import Proposal "Proposal";
 
 module {
 
     public type StableData<TProposalContent> = ExtendedProposalEngine.StableData<TProposalContent, Bool>;
 
-    public type ChoiceVotingPower = ExtendedProposalEngine.ChoiceVotingPower<Bool>;
+    public type ChoiceVotingPower = Proposal.ChoiceVotingPower;
 
     public type AddMemberResult = ExtendedProposalEngine.AddMemberResult;
 
     public type CreateProposalError = ExtendedProposalEngine.CreateProposalError;
 
-    public type VoteError = ExtendedProposalEngine.VoteError;
+    public type VoteError = Proposal.VoteError;
 
-    public type Proposal<TProposalContent> = ExtendedProposalEngine.Proposal<TProposalContent, Bool>;
+    public type Proposal<TProposalContent> = Proposal.Proposal<TProposalContent>;
 
     public class ProposalEngine<system, TProposalContent>(
         data : StableData<TProposalContent>,
@@ -63,6 +64,10 @@ module {
 
         public func getVote(proposalId : Nat, voterId : Principal) : ?ExtendedProposalEngine.Vote<Bool> {
             internalEngine.getVote(proposalId, voterId);
+        };
+
+        public func buildVoteSummary(proposalId : Nat) : Proposal.VotingSummary {
+            internalEngine.buildVoteSummary(proposalId);
         };
 
         /// Casts a vote on a proposal for the specified voter.
