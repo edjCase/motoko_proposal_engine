@@ -112,23 +112,25 @@ module {
             };
             case (null) ();
         };
-        let ?index = IterTools.findIndex(
+        let ?voteIndex = IterTools.findIndex(
             proposal.votes.vals(),
             func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
         ) else return #err(#notAuthorized); // Only allow members to vote who existed when the proposal was created
 
-        let (_, existingVote) = proposal.votes[index];
+        let (_, existingVote) = proposal.votes[voteIndex];
         let null = existingVote.choice else return #err(#alreadyVoted);
 
         let newVotes = Buffer.fromArray<(Principal, Vote<TChoice>)>(proposal.votes);
-        newVotes.put(index, (voterId, { existingVote with choice = ?vote }));
+        newVotes.put(voteIndex, (voterId, { existingVote with choice = ?vote }));
 
-        let choiceStatus = calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, false);
+        let updatedProposal = {
+            proposal with
+            votes = Buffer.toArray(newVotes);
+        };
+
+        let choiceStatus = calculateVoteStatus(updatedProposal, votingThreshold, equalChoice, hashChoice, false);
         #ok({
-            updatedProposal = {
-                proposal with
-                votes = Buffer.toArray(newVotes);
-            };
+            updatedProposal = updatedProposal;
             choiceStatus = choiceStatus;
         });
     };
