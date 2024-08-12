@@ -152,7 +152,7 @@ module {
             ExtendedProposal.getVote<TProposalContent, TChoice>(proposal, voterId);
         };
 
-        public func buildVoteSummary(proposalId : Nat) : VotingSummary<TChoice> {
+        public func buildVotingSummary(proposalId : Nat) : VotingSummary<TChoice> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
             ExtendedProposal.buildVotingSummary(proposal, equalChoice, hashChoice);
         };

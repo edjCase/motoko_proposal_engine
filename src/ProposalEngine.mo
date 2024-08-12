@@ -66,8 +66,8 @@ module {
             internalEngine.getVote(proposalId, voterId);
         };
 
-        public func buildVoteSummary(proposalId : Nat) : Proposal.VotingSummary {
-            internalEngine.buildVoteSummary(proposalId);
+        public func buildVotingSummary(proposalId : Nat) : Proposal.VotingSummary {
+            internalEngine.buildVotingSummary(proposalId);
         };
 
         /// Casts a vote on a proposal for the specified voter.
