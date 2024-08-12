@@ -75,7 +75,6 @@ module {
         #notAuthorized;
         #alreadyVoted;
         #votingClosed;
-        #proposalNotFound;
     };
 
     public type VoteOk<TProposalContent, TChoice> = {
@@ -146,15 +145,15 @@ module {
         });
     };
 
-    public func buildVotingSummary<TChoice>(
-        votes : [(Principal, Vote<TChoice>)],
+    public func buildVotingSummary<TProposalContent, TChoice>(
+        proposal : Proposal<TProposalContent, TChoice>,
         equal : (TChoice, TChoice) -> Bool,
         hash : (TChoice) -> Nat32,
     ) : VotingSummary<TChoice> {
         let choices = HashMap.HashMap<TChoice, Nat>(5, equal, hash);
         var undecidedVotingPower = 0;
         var totalVotingPower = 0;
-        for ((voterId, vote) in votes.vals()) {
+        for ((voterId, vote) in proposal.votes.vals()) {
             switch (vote.choice) {
                 case (null) {
                     undecidedVotingPower += vote.votingPower;
@@ -189,7 +188,7 @@ module {
         hashChoice : (TChoice) -> Nat32,
         forceEnd : Bool,
     ) : ChoiceStatus<TChoice> {
-        let { totalVotingPower; undecidedVotingPower; votingPowerByChoice } = buildVotingSummary(proposal.votes, equalChoice, hashChoice);
+        let { totalVotingPower; undecidedVotingPower; votingPowerByChoice } = buildVotingSummary(proposal, equalChoice, hashChoice);
         let votedVotingPower : Nat = totalVotingPower - undecidedVotingPower;
         switch (votingThreshold) {
             case (#percent({ percent; quorum })) {

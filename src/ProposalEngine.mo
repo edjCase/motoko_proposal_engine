@@ -13,7 +13,7 @@ module {
 
     public type CreateProposalError = ExtendedProposalEngine.CreateProposalError;
 
-    public type VoteError = Proposal.VoteError;
+    public type VoteError = ExtendedProposalEngine.VoteError;
 
     public type Proposal<TProposalContent> = Proposal.Proposal<TProposalContent>;
 

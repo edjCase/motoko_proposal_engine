@@ -53,11 +53,11 @@ module {
         );
     };
 
-    public func buildVotingSummary(
-        votes : [(Principal, Vote)]
+    public func buildVotingSummary<TProposalContent>(
+        proposal : Proposal<TProposalContent>
     ) : VotingSummary {
         ExtendedProposal.buildVotingSummary(
-            votes,
+            proposal,
             func(a : Bool, b : Bool) : Bool = a == b,
             func(a : Bool) : Nat32 = if (a) 1 else 0,
         );

@@ -54,7 +54,9 @@ module {
         #invalid : [Text];
     };
 
-    public type VoteError = ExtendedProposal.VoteError;
+    public type VoteError = ExtendedProposal.VoteError or {
+        #proposalNotFound;
+    };
 
     type ProposalWithTimer<TProposalContent, TChoice> = ExtendedProposal.Proposal<TProposalContent, TChoice> and {
         var endTimerId : ?Nat;
@@ -152,7 +154,7 @@ module {
 
         public func buildVoteSummary(proposalId : Nat) : VotingSummary<TChoice> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
-            ExtendedProposal.buildVotingSummary(proposal.votes, equalChoice, hashChoice);
+            ExtendedProposal.buildVotingSummary(proposal, equalChoice, hashChoice);
         };
 
         /// Casts a vote on a proposal for the specified voter.
