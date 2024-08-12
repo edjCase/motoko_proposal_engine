@@ -4,7 +4,7 @@ import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
 import Nat32 "mo:base/Nat32";
-import GenericProposalEngine "../src/GenericProposalEngine";
+import ExtendedProposalEngine "../src/ExtendedProposalEngine";
 
 await test(
     "33/33/33 no consensus",
@@ -13,18 +13,18 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : GenericProposalEngine.StableData<ProposalContent, Nat> = {
+        let stableData : ExtendedProposalEngine.StableData<ProposalContent, Nat> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : ?Nat, _ : GenericProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = GenericProposalEngine.GenericProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
+        let engine = ExtendedProposalEngine.ProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -77,18 +77,18 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : GenericProposalEngine.StableData<ProposalContent, Nat> = {
+        let stableData : ExtendedProposalEngine.StableData<ProposalContent, Nat> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : ?Nat, _ : GenericProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = GenericProposalEngine.GenericProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
+        let engine = ExtendedProposalEngine.ProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -169,18 +169,18 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : GenericProposalEngine.StableData<ProposalContent, Nat> = {
+        let stableData : ExtendedProposalEngine.StableData<ProposalContent, Nat> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : ?Nat, _ : GenericProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = GenericProposalEngine.GenericProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
+        let engine = ExtendedProposalEngine.ProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -227,18 +227,18 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : GenericProposalEngine.StableData<ProposalContent, Nat> = {
+        let stableData : ExtendedProposalEngine.StableData<ProposalContent, Nat> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : ?Nat, _ : GenericProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = GenericProposalEngine.GenericProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
+        let engine = ExtendedProposalEngine.ProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -285,18 +285,18 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : GenericProposalEngine.StableData<ProposalContent, Nat> = {
+        let stableData : ExtendedProposalEngine.StableData<ProposalContent, Nat> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : ?Nat, _ : GenericProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = GenericProposalEngine.GenericProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
+        let engine = ExtendedProposalEngine.ProposalEngine<system, ProposalContent, Nat>(stableData, onExecute, onValidate, Nat.equal, Nat32.fromNat);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },

@@ -1,31 +1,20 @@
 import Result "mo:base/Result";
 import Bool "mo:base/Bool";
-import GenericProposalEngine "GenericProposalEngine";
+import ExtendedProposalEngine "ExtendedProposalEngine";
+
 module {
 
-    public type StableData<TProposalContent> = GenericProposalEngine.StableData<TProposalContent, Bool>;
+    public type StableData<TProposalContent> = ExtendedProposalEngine.StableData<TProposalContent, Bool>;
 
-    public type Proposal<TProposalContent> = GenericProposalEngine.Proposal<TProposalContent, Bool>;
+    public type ChoiceVotingPower = ExtendedProposalEngine.ChoiceVotingPower<Bool>;
 
-    public type VotingThreshold = GenericProposalEngine.VotingThreshold;
+    public type AddMemberResult = ExtendedProposalEngine.AddMemberResult;
 
-    public type Duration = GenericProposalEngine.Duration;
+    public type CreateProposalError = ExtendedProposalEngine.CreateProposalError;
 
-    public type Member = GenericProposalEngine.Member;
+    public type VoteError = ExtendedProposalEngine.VoteError;
 
-    public type ProposalStatus = GenericProposalEngine.ProposalStatus<Bool>;
-
-    public type Vote = GenericProposalEngine.Vote<Bool>;
-
-    public type VotingSummary = GenericProposalEngine.VotingSummary<Bool>;
-
-    public type ChoiceVotingPower = GenericProposalEngine.ChoiceVotingPower<Bool>;
-
-    public type AddMemberResult = GenericProposalEngine.AddMemberResult;
-
-    public type CreateProposalError = GenericProposalEngine.CreateProposalError;
-
-    public type VoteError = GenericProposalEngine.VoteError;
+    public type Proposal<TProposalContent> = ExtendedProposalEngine.Proposal<TProposalContent, Bool>;
 
     public class ProposalEngine<system, TProposalContent>(
         data : StableData<TProposalContent>,
@@ -43,7 +32,7 @@ module {
             };
         };
 
-        let internalEngine = GenericProposalEngine.ProposalEngine<system, TProposalContent, Bool>(
+        let internalEngine = ExtendedProposalEngine.ProposalEngine<system, TProposalContent, Bool>(
             data,
             onProposalExecute,
             onProposalValidate,
@@ -55,7 +44,7 @@ module {
         ///
         /// ```motoko
         /// let proposalId : Nat = 1;
-        /// let ?proposal : ?GenericProposalEngine.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+        /// let ?proposal : ?ExtendedProposalEngine.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
         /// ```
         public func getProposal(id : Nat) : ?Proposal<TProposalContent> {
             internalEngine.getProposal(id);
@@ -66,13 +55,13 @@ module {
         /// ```motoko
         /// let count : Nat = 10; // Max proposals to return
         /// let offset : Nat = 0; // Proposals to skip
-        /// let pagedResult : GenericProposalEngine.PagedResult<GenericProposalEngine.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
+        /// let pagedResult : ExtendedProposalEngine.PagedResult<ExtendedProposalEngine.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
         /// ```
-        public func getProposals(count : Nat, offset : Nat) : GenericProposalEngine.PagedResult<Proposal<TProposalContent>> {
+        public func getProposals(count : Nat, offset : Nat) : ExtendedProposalEngine.PagedResult<Proposal<TProposalContent>> {
             internalEngine.getProposals(count, offset);
         };
 
-        public func getVote(proposalId : Nat, voterId : Principal) : ?GenericProposalEngine.Vote<Bool> {
+        public func getVote(proposalId : Nat, voterId : Principal) : ?ExtendedProposalEngine.Vote<Bool> {
             internalEngine.getVote(proposalId, voterId);
         };
 
@@ -89,7 +78,7 @@ module {
         ///   case (#err(error)) { /* Handle error */ };
         /// };
         /// ```
-        public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), GenericProposalEngine.VoteError> {
+        public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), ExtendedProposalEngine.VoteError> {
             await* internalEngine.vote(proposalId, voterId, vote);
         };
 
@@ -109,8 +98,8 @@ module {
         public func createProposal<system>(
             proposerId : Principal,
             content : TProposalContent,
-            members : [GenericProposalEngine.Member],
-        ) : async* Result.Result<Nat, GenericProposalEngine.CreateProposalError> {
+            members : [ExtendedProposalEngine.Member],
+        ) : async* Result.Result<Nat, ExtendedProposalEngine.CreateProposalError> {
             await* internalEngine.createProposal(proposerId, content, members);
         };
 
@@ -121,7 +110,7 @@ module {
         /// Converts the current state to stable data for upgrades.
         ///
         /// ```motoko
-        /// let stableData : GenericProposalEngine.StableData<ProposalContent> = proposalEngine.toStableData();
+        /// let stableData : ExtendedProposalEngine.StableData<ProposalContent> = proposalEngine.toStableData();
         /// ```
         public func toStableData() : StableData<TProposalContent> {
             internalEngine.toStableData();

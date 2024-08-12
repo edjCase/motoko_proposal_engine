@@ -2,7 +2,7 @@ import { test } "mo:test/async";
 import Result "mo:base/Result";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
-import BinaryProposalEngine "../src/BinaryProposalEngine";
+import ProposalEngine "../src/ProposalEngine";
 
 await test(
     "50/50 reject",
@@ -11,21 +11,21 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : BinaryProposalEngine.StableData<ProposalContent> = {
+        let stableData : ProposalEngine.StableData<ProposalContent> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
         };
-        let onReject = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* () {
+        let onReject = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* () {
 
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = BinaryProposalEngine.BinaryProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
+        let engine = ProposalEngine.ProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -71,21 +71,21 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : BinaryProposalEngine.StableData<ProposalContent> = {
+        let stableData : ProposalEngine.StableData<ProposalContent> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
         };
-        let onReject = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* () {
+        let onReject = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* () {
 
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = BinaryProposalEngine.BinaryProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
+        let engine = ProposalEngine.ProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -167,21 +167,21 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : BinaryProposalEngine.StableData<ProposalContent> = {
+        let stableData : ProposalEngine.StableData<ProposalContent> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
         };
-        let onReject = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* () {
+        let onReject = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* () {
 
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = BinaryProposalEngine.BinaryProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
+        let engine = ProposalEngine.ProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
@@ -228,21 +228,21 @@ await test(
             title : Text;
             description : Text;
         };
-        let stableData : BinaryProposalEngine.StableData<ProposalContent> = {
+        let stableData : ProposalEngine.StableData<ProposalContent> = {
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
         };
-        let onExecute = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
+        let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
         };
-        let onReject = func(_ : BinaryProposalEngine.Proposal<ProposalContent>) : async* () {
+        let onReject = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* () {
 
         };
         let onValidate = func(_ : ProposalContent) : async* Result.Result<(), [Text]> {
             #ok;
         };
-        let engine = BinaryProposalEngine.BinaryProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
+        let engine = ProposalEngine.ProposalEngine<system, ProposalContent>(stableData, onExecute, onReject, onValidate);
         let proposerId = Principal.fromText("sbzkb-zqaaa-aaaaa-aaaiq-cai");
         let members = [
             { votingPower = 1; id = proposerId },
