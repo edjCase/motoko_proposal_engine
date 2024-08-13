@@ -79,12 +79,15 @@ module {
 
     public type VoteOk<TProposalContent, TChoice> = {
         updatedProposal : Proposal<TProposalContent, TChoice>;
-        choiceStatus : ChoiceStatus<TChoice>;
     };
 
     public type ChoiceStatus<TChoice> = {
         #determined : ?TChoice;
         #undetermined;
+    };
+    type MinProposal<TChoice> = {
+        votes : [(Principal, Vote<TChoice>)];
+        status : ProposalStatus<TChoice>;
     };
 
     public func getVote<TProposalContent, TChoice>(
@@ -102,9 +105,6 @@ module {
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,
         vote : TChoice,
-        votingThreshold : VotingThreshold,
-        equalChoice : (TChoice, TChoice) -> Bool,
-        hashChoice : (TChoice) -> Nat32,
     ) : Result.Result<VoteOk<TProposalContent, TChoice>, VoteError> {
         let now = Time.now();
         if (proposal.timeStart > now) {
@@ -138,10 +138,8 @@ module {
             votes = Buffer.toArray(newVotes);
         };
 
-        let choiceStatus = calculateVoteStatus(updatedProposal, votingThreshold, equalChoice, hashChoice, false);
         #ok({
             updatedProposal = updatedProposal;
-            choiceStatus = choiceStatus;
         });
     };
 

@@ -41,15 +41,11 @@ module {
         proposal : Proposal<TProposalContent>,
         voterId : Principal,
         vote : Bool,
-        votingThreshold : VotingThreshold,
     ) : Result.Result<VoteOk<TProposalContent>, VoteError> {
         ExtendedProposal.vote(
             proposal,
             voterId,
             vote,
-            votingThreshold,
-            func(a : Bool, b : Bool) : Bool = a == b,
-            func(a : Bool) : Nat32 = if (a) 1 else 0,
         );
     };
 

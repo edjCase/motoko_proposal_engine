@@ -58,7 +58,7 @@ module {
         #proposalNotFound;
     };
 
-    type ProposalWithTimer<TProposalContent, TChoice> = ExtendedProposal.Proposal<TProposalContent, TChoice> and {
+    type ProposalWithTimer<TProposalContent, TChoice> = Proposal<TProposalContent, TChoice> and {
         var endTimerId : ?Nat;
     };
 
@@ -172,10 +172,11 @@ module {
         /// ```
         public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
-            switch (ExtendedProposal.vote(proposal, voterId, vote, votingThreshold, equalChoice, hashChoice)) {
+            switch (ExtendedProposal.vote(proposal, voterId, vote)) {
                 case (#ok(ok)) {
                     proposals.put(proposalId, { ok.updatedProposal with var endTimerId = proposal.endTimerId });
-                    switch (ok.choiceStatus) {
+                    let choiceStatus = ExtendedProposal.calculateVoteStatus(ok.updatedProposal, votingThreshold, equalChoice, hashChoice, false);
+                    switch (choiceStatus) {
                         case (#determined(choice)) {
                             await* executeProposal(proposalId, proposals, choice);
                         };
