@@ -50,7 +50,7 @@ module {
     };
 
     public type CreateProposalError = {
-        #notAuthorized;
+        #notEligible;
         #invalid : [Text];
     };
 

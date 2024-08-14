@@ -72,7 +72,7 @@ module {
     };
 
     public type VoteError = {
-        #notAuthorized;
+        #notEligible;
         #alreadyVoted;
         #votingClosed;
     };
@@ -125,7 +125,7 @@ module {
         let ?voteIndex = IterTools.findIndex(
             proposal.votes.vals(),
             func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
-        ) else return #err(#notAuthorized); // Only allow members to vote who existed when the proposal was created
+        ) else return #err(#notEligible); // Only allow members to vote who existed when the proposal was created
 
         let (_, existingVote) = proposal.votes[voteIndex];
         let null = existingVote.choice else return #err(#alreadyVoted);
