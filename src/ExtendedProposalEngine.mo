@@ -213,39 +213,27 @@ module {
                 };
             };
 
-            let now = Time.now();
+            let timeStart = Time.now();
 
-            // Take snapshot of members at the time of proposal creation
-            let votes = members.vals()
-            |> Iter.map<Member, (Principal, Vote<TChoice>)>(
-                _,
-                func(member : Member) : (Principal, Vote<TChoice>) = (
-                    member.id,
-                    {
-                        choice = null;
-                        votingPower = member.votingPower;
-                    },
-                ),
-            )
-            |> Iter.toArray(_);
             let proposalId = nextProposalId;
             let (timeEnd, endTimerId) : (?Int, ?Nat) = switch (proposalDuration) {
                 case (?proposalDuration) {
                     let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
                     let timerId = createEndTimer<system>(proposalId, proposalDurationNanoseconds);
-                    (?(now + proposalDurationNanoseconds), ?timerId);
+                    (?(timeStart + proposalDurationNanoseconds), ?timerId);
                 };
                 case (null) (null, null);
             };
             let proposal : ProposalWithTimer<TProposalContent, TChoice> = {
-                id = proposalId;
-                proposerId = proposerId;
-                content = content;
-                timeStart = now;
-                timeEnd = timeEnd;
+                ExtendedProposal.create<TProposalContent, TChoice>(
+                    proposalId,
+                    proposerId,
+                    content,
+                    members,
+                    timeStart,
+                    timeEnd,
+                ) with
                 var endTimerId = endTimerId;
-                votes = votes;
-                status = #open;
             };
             proposals.put(nextProposalId, proposal);
             nextProposalId += 1;

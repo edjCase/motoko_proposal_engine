@@ -249,11 +249,16 @@ module {
         id : Nat,
         proposerId : Principal,
         content : TProposalContent,
+        members : [Member],
         timeStart : Time.Time,
         timeEnd : ?Time.Time,
-        votes : [(Principal, Vote<TChoice>)],
-        status : ProposalStatus<TChoice>,
     ) : Proposal<TProposalContent, TChoice> {
+        let votes = members.vals()
+        |> Iter.map<Member, (Principal, Vote<TChoice>)>(
+            _,
+            func(member : Member) : (Principal, Vote<TChoice>) = (member.id, { choice = null; votingPower = member.votingPower }),
+        )
+        |> Iter.toArray(_);
         {
             id = id;
             proposerId = proposerId;
@@ -261,7 +266,7 @@ module {
             timeStart = timeStart;
             timeEnd = timeEnd;
             votes = votes;
-            status = status;
+            status = #open;
         };
     };
 

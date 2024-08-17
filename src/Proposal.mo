@@ -78,19 +78,17 @@ module {
         id : Nat,
         proposerId : Principal,
         content : TProposalContent,
+        members : [Member],
         timeStart : Time.Time,
         timeEnd : ?Time.Time,
-        votes : [(Principal, Vote)],
-        status : ProposalStatus,
     ) : Proposal<TProposalContent> {
         ExtendedProposal.create<TProposalContent, Bool>(
             id,
             proposerId,
             content,
+            members,
             timeStart,
             timeEnd,
-            votes,
-            status,
         );
     };
 };
