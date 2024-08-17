@@ -245,6 +245,26 @@ module {
         return #undetermined;
     };
 
+    public func create<TProposalContent, TChoice>(
+        id : Nat,
+        proposerId : Principal,
+        content : TProposalContent,
+        timeStart : Time.Time,
+        timeEnd : ?Time.Time,
+        votes : [(Principal, Vote<TChoice>)],
+        status : ProposalStatus<TChoice>,
+    ) : Proposal<TProposalContent, TChoice> {
+        {
+            id = id;
+            proposerId = proposerId;
+            content = content;
+            timeStart = timeStart;
+            timeEnd = timeEnd;
+            votes = votes;
+            status = status;
+        };
+    };
+
     private func calculateFromPercent(percent : Nat, total : Nat, greaterThan : Bool) : Nat {
         let threshold = Float.fromInt(percent) / 100.0 * Float.fromInt(total);
         // If the threshold is an integer, add 1 to make sure the proposal passes

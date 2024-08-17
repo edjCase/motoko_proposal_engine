@@ -1,6 +1,7 @@
 import Result "mo:base/Result";
 import Principal "mo:base/Principal";
 import Bool "mo:base/Bool";
+import Time "mo:base/Time";
 import ExtendedProposal "ExtendedProposal";
 
 module {
@@ -70,6 +71,26 @@ module {
             func(a : Bool, b : Bool) : Bool = a == b,
             func(a : Bool) : Nat32 = if (a) 1 else 0,
             forceEnd,
+        );
+    };
+
+    public func create<TProposalContent>(
+        id : Nat,
+        proposerId : Principal,
+        content : TProposalContent,
+        timeStart : Time.Time,
+        timeEnd : ?Time.Time,
+        votes : [(Principal, Vote)],
+        status : ProposalStatus,
+    ) : Proposal<TProposalContent> {
+        ExtendedProposal.create<TProposalContent, Bool>(
+            id,
+            proposerId,
+            content,
+            timeStart,
+            timeEnd,
+            votes,
+            status,
         );
     };
 };
