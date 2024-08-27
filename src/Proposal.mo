@@ -42,11 +42,13 @@ module {
         proposal : Proposal<TProposalContent>,
         voterId : Principal,
         vote : Bool,
+        allowVoteChange : Bool,
     ) : Result.Result<VoteOk<TProposalContent>, VoteError> {
         ExtendedProposal.vote(
             proposal,
             voterId,
             vote,
+            allowVoteChange,
         );
     };
 

@@ -17,6 +17,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
@@ -81,6 +82,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
@@ -173,6 +175,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
@@ -231,6 +234,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;
@@ -289,6 +293,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ?Nat, _ : ExtendedProposalEngine.Proposal<ProposalContent, Nat>) : async* Result.Result<(), Text> {
             #ok;

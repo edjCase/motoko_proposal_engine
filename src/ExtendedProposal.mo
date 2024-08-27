@@ -105,6 +105,7 @@ module {
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,
         vote : TChoice,
+        allowVoteChange : Bool,
     ) : Result.Result<VoteOk<TProposalContent, TChoice>, VoteError> {
         let now = Time.now();
         if (proposal.timeStart > now) {
@@ -128,7 +129,9 @@ module {
         ) else return #err(#notEligible); // Only allow members to vote who existed when the proposal was created
 
         let (_, existingVote) = proposal.votes[voteIndex];
-        let null = existingVote.choice else return #err(#alreadyVoted);
+        if (not allowVoteChange) {
+            let null = existingVote.choice else return #err(#alreadyVoted);
+        };
 
         let newVotes = Buffer.fromArray<(Principal, Vote<TChoice>)>(proposal.votes);
         newVotes.put(voteIndex, (voterId, { existingVote with choice = ?vote }));

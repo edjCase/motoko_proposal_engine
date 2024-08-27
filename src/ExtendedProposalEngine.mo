@@ -19,6 +19,7 @@ module {
         proposals : [Proposal<TProposalContent, TChoice>];
         proposalDuration : ?Duration;
         votingThreshold : VotingThreshold;
+        allowVoteChange : Bool;
     };
 
     public type PagedResult<T> = {
@@ -85,8 +86,9 @@ module {
 
         var nextProposalId = data.proposals.size() + 1; // TODO make last proposal + 1
 
-        var proposalDuration = data.proposalDuration;
-        var votingThreshold = data.votingThreshold;
+        let proposalDuration = data.proposalDuration;
+        let votingThreshold = data.votingThreshold;
+        let allowVoteChange = data.allowVoteChange;
 
         private func resetEndTimers<system>() {
             for (proposal in proposals.vals()) {
@@ -172,7 +174,7 @@ module {
         /// ```
         public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
-            switch (ExtendedProposal.vote(proposal, voterId, vote)) {
+            switch (ExtendedProposal.vote(proposal, voterId, vote, allowVoteChange)) {
                 case (#ok(ok)) {
                     proposals.put(proposalId, { ok.updatedProposal with var endTimerId = proposal.endTimerId });
                     let choiceStatus = ExtendedProposal.calculateVoteStatus(ok.updatedProposal, votingThreshold, equalChoice, hashChoice, false);
@@ -268,6 +270,7 @@ module {
                 proposals = proposalsArray;
                 proposalDuration = proposalDuration;
                 votingThreshold = votingThreshold;
+                allowVoteChange = allowVoteChange;
             };
         };
 

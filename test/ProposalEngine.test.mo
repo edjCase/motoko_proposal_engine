@@ -15,6 +15,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
@@ -75,6 +76,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
@@ -171,6 +173,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
@@ -232,6 +235,7 @@ await test(
             proposals = [];
             proposalDuration = null;
             votingThreshold = #percent({ percent = 50; quorum = ?20 });
+            allowVoteChange = false;
         };
         let onExecute = func(_ : ProposalEngine.Proposal<ProposalContent>) : async* Result.Result<(), Text> {
             #ok;
