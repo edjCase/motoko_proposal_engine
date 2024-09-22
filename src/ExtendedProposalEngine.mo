@@ -134,7 +134,7 @@ module {
             |> IterTools.sort(
                 _,
                 func(proposalA : Proposal<TProposalContent, TChoice>, proposalB : Proposal<TProposalContent, TChoice>) : Order.Order {
-                    Int.compare(proposalA.timeStart, proposalB.timeStart);
+                    Int.compare(proposalB.timeStart, proposalA.timeStart);
                 },
             )
             |> IterTools.skip(_, offset)
