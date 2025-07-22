@@ -8,6 +8,7 @@ import Buffer "mo:base/Buffer";
 import Float "mo:base/Float";
 import Int "mo:base/Int";
 import IterTools "mo:itertools/Iter";
+import BTree "mo:stableheapbtreemap/BTree";
 
 module {
 
@@ -26,6 +27,11 @@ module {
         id : Principal;
     };
 
+    public type ProposalMode = {
+        #fixedMembers; // Traditional mode with fixed member list
+        #realTime; // Real-time mode with dynamic member addition
+    };
+
     public type Proposal<TProposalContent, TChoice> = {
         id : Nat;
         proposerId : Principal;
@@ -34,6 +40,9 @@ module {
         content : TProposalContent;
         votes : [(Principal, Vote<TChoice>)];
         status : ProposalStatus<TChoice>;
+        mode : ProposalMode;
+        totalVotingPower : ?Nat; // For real-time proposals
+        members : ?BTree.BTree<Principal, Member>; // For real-time proposals
     };
 
     public type ProposalStatus<TChoice> = {
@@ -90,6 +99,63 @@ module {
         status : ProposalStatus<TChoice>;
     };
 
+    public type AddMemberError = {
+        #alreadyExists;
+        #notRealTimeProposal;
+        #votingClosed;
+    };
+
+    public func addMember<TProposalContent, TChoice>(
+        proposal : Proposal<TProposalContent, TChoice>,
+        member : Member,
+    ) : Result.Result<Proposal<TProposalContent, TChoice>, AddMemberError> {
+        switch (proposal.mode) {
+            case (#fixedMembers) {
+                return #err(#notRealTimeProposal);
+            };
+            case (#realTime) {
+                let now = Time.now();
+                if (proposal.timeStart > now) {
+                    return #err(#votingClosed);
+                };
+                switch (proposal.status) {
+                    case (#open) ();
+                    case (_) {
+                        return #err(#votingClosed);
+                    };
+                };
+                switch (proposal.timeEnd) {
+                    case (?timeEnd) if (timeEnd <= now) {
+                        return #err(#votingClosed);
+                    };
+                    case (null) ();
+                };
+
+                let ?membersMap = proposal.members else return #err(#notRealTimeProposal);
+                
+                // Check if member already exists
+                switch (BTree.get(membersMap, Principal.compare, member.id)) {
+                    case (?_) return #err(#alreadyExists);
+                    case (null) ();
+                };
+
+                // Add member to BTree
+                ignore BTree.insert(membersMap, Principal.compare, member.id, member);
+
+                // Add vote entry
+                let newVotes = Buffer.fromArray<(Principal, Vote<TChoice>)>(proposal.votes);
+                newVotes.add((member.id, { choice = null; votingPower = member.votingPower }));
+
+                let updatedProposal = {
+                    proposal with
+                    votes = Buffer.toArray(newVotes);
+                };
+
+                #ok(updatedProposal);
+            };
+        };
+    };
+
     public func getVote<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,
@@ -123,6 +189,19 @@ module {
             };
             case (null) ();
         };
+
+        // For real-time proposals, check if voter is eligible by looking in the members BTree
+        switch (proposal.mode) {
+            case (#realTime) {
+                let ?membersMap = proposal.members else return #err(#notEligible);
+                switch (BTree.get(membersMap, Principal.compare, voterId)) {
+                    case (null) return #err(#notEligible);
+                    case (?_) (); // Member exists, proceed
+                };
+            };
+            case (#fixedMembers) (); // Original eligibility check below will apply
+        };
+
         let ?voteIndex = IterTools.findIndex(
             proposal.votes.vals(),
             func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
@@ -191,12 +270,25 @@ module {
     ) : ChoiceStatus<TChoice> {
         let { totalVotingPower; undecidedVotingPower; votingPowerByChoice } = buildVotingSummary(proposal, equalChoice, hashChoice);
         let votedVotingPower : Nat = totalVotingPower - undecidedVotingPower;
+        
         switch (votingThreshold) {
             case (#percent({ percent; quorum })) {
                 let quorumThreshold = switch (quorum) {
                     case (null) 0;
                     case (?q) calculateFromPercent(q, totalVotingPower, false);
                 };
+                
+                // For real-time proposals, use the declared total voting power instead of current votes
+                let effectiveTotalVotingPower = switch (proposal.mode) {
+                    case (#realTime) {
+                        switch (proposal.totalVotingPower) {
+                            case (?total) total;
+                            case (null) totalVotingPower; // Fallback to calculated
+                        };
+                    };
+                    case (#fixedMembers) totalVotingPower;
+                };
+                
                 // The proposal must reach the quorum threshold in any case
                 if (votedVotingPower >= quorumThreshold) {
                     let hasEnded = forceEnd or (
@@ -205,20 +297,21 @@ module {
                             case (null) false;
                         }
                     );
+                    
                     let voteThreshold = if (hasEnded) {
                         // If the proposal has reached the end time, it passes if the votes are above the threshold of the VOTED voting power
-                        let votedPercent = votedVotingPower / totalVotingPower;
                         calculateFromPercent(percent, votedVotingPower, true);
                     } else {
-                        // If the proposal has not reached the end time, it passes if votes are above the threshold (+1) of the TOTAL voting power
-                        let votingThreshold = calculateFromPercent(percent, totalVotingPower, true);
-                        if (votingThreshold >= totalVotingPower) {
+                        // Use the effective total voting power for threshold calculation
+                        let votingThreshold = calculateFromPercent(percent, effectiveTotalVotingPower, true);
+                        if (votingThreshold >= effectiveTotalVotingPower) {
                             // Safety with low total voting power to make sure the proposal can pass
-                            totalVotingPower;
+                            effectiveTotalVotingPower;
                         } else {
                             votingThreshold;
                         };
                     };
+                    
                     let pluralityChoices = {
                         var votingPower = 0;
                         choices = Buffer.Buffer<TChoice>(1);
@@ -232,14 +325,34 @@ module {
                             pluralityChoices.choices.add(choice.choice);
                         };
                     };
+                    
                     if (pluralityChoices.choices.size() == 1) {
                         if (pluralityChoices.votingPower >= voteThreshold) {
-                            return #determined(?pluralityChoices.choices.get(0));
+                            // Real-time proposals should NOT auto-execute, even when threshold is reached
+                            switch (proposal.mode) {
+                                case (#realTime) return #undetermined; // Stay undetermined for manual execution
+                                case (#fixedMembers) return #determined(?pluralityChoices.choices.get(0));
+                            };
                         };
                     } else if (pluralityChoices.choices.size() > 1) {
-                        // If everyone has voted and there is a tie -> undetermined
-                        if (undecidedVotingPower <= 0) {
-                            return #determined(null);
+                        // For real-time proposals, only consider it a tie if we've reached the total voting power
+                        switch (proposal.mode) {
+                            case (#realTime) {
+                                switch (proposal.totalVotingPower) {
+                                    case (?total) {
+                                        if (totalVotingPower >= total) {
+                                            return #determined(null);
+                                        };
+                                    };
+                                    case (null) ();
+                                };
+                            };
+                            case (#fixedMembers) {
+                                // If everyone has voted and there is a tie -> undetermined
+                                if (undecidedVotingPower <= 0) {
+                                    return #determined(null);
+                                };
+                            };
                         };
                     };
                 };
@@ -247,6 +360,7 @@ module {
         };
         return #undetermined;
     };
+
 
     public func create<TProposalContent, TChoice>(
         id : Nat,
@@ -270,6 +384,32 @@ module {
             timeEnd = timeEnd;
             votes = votes;
             status = #open;
+            mode = #fixedMembers;
+            totalVotingPower = null;
+            members = null;
+        };
+    };
+
+    public func createRealTime<TProposalContent, TChoice>(
+        id : Nat,
+        proposerId : Principal,
+        content : TProposalContent,
+        totalVotingPower : Nat,
+        timeStart : Time.Time,
+        timeEnd : ?Time.Time,
+    ) : Proposal<TProposalContent, TChoice> {
+        let membersMap = BTree.init<Principal, Member>(?32);
+        {
+            id = id;
+            proposerId = proposerId;
+            content = content;
+            timeStart = timeStart;
+            timeEnd = timeEnd;
+            votes = [];
+            status = #open;
+            mode = #realTime;
+            totalVotingPower = ?totalVotingPower;
+            members = ?membersMap;
         };
     };
 
