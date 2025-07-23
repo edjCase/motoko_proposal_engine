@@ -29,6 +29,8 @@ module {
         totalCount : Nat;
     };
 
+    public type VotingMode = ExtendedProposal.VotingMode;
+
     public type VotingThreshold = ExtendedProposal.VotingThreshold;
 
     public type Duration = ExtendedProposal.Duration;
@@ -49,7 +51,7 @@ module {
         #ok;
         #alreadyExists;
         #proposalNotFound;
-        #notRealTimeProposal;
+        #votingNotDynamic;
         #votingClosed;
     };
 
@@ -153,12 +155,26 @@ module {
             };
         };
 
+        /// Retrieves a vote for a specific voter on a proposal.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let voterId : Principal = ...;
+        /// let ?vote : ?Vote<TChoice> = proposalEngine.getVote(proposalId, voterId) else Debug.trap("Vote not found");
+        /// ```
         public func getVote(proposalId : Nat, voterId : Principal) : ?Vote<TChoice> {
             let ?proposal = proposals.get(proposalId) else return null;
 
             ExtendedProposal.getVote<TProposalContent, TChoice>(proposal, voterId);
         };
 
+        /// Builds a voting summary for a proposal showing vote tallies by choice.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let summary : VotingSummary<TChoice> = proposalEngine.buildVotingSummary(proposalId);
+        /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
+        /// ```
         public func buildVotingSummary(proposalId : Nat) : VotingSummary<TChoice> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
             ExtendedProposal.buildVotingSummary(proposal, equalChoice, hashChoice);
@@ -171,7 +187,7 @@ module {
         /// ```motoko
         /// let proposalId : Nat = 1;
         /// let voterId : Principal = ...;
-        /// let vote : Bool = true; // true for yes, false for no
+        /// let vote : TChoice = ...; // Your choice value
         /// switch (await* proposalEngine.vote(proposalId, voterId, vote)) {
         ///   case (#ok) { /* Vote successful */ };
         ///   case (#err(error)) { /* Handle error */ };
@@ -180,9 +196,8 @@ module {
         public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
             switch (ExtendedProposal.vote(proposal, voterId, vote, allowVoteChange)) {
-                case (#ok(ok)) {
-                    proposals.put(proposalId, { ok.updatedProposal with var endTimerId = proposal.endTimerId });
-                    let choiceStatus = ExtendedProposal.calculateVoteStatus(ok.updatedProposal, votingThreshold, equalChoice, hashChoice, false);
+                case (#ok) {
+                    let choiceStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, false);
                     switch (choiceStatus) {
                         case (#determined(choice)) {
                             await* executeProposal(proposalId, proposals, choice);
@@ -202,7 +217,8 @@ module {
         /// let proposerId = ...;
         /// let content = { /* Your proposal content here */ };
         /// let members = [...]; // Snapshot of members to vote on the proposal
-        /// switch (await* proposalEngine.createProposal(proposerId, content, members)) {
+        /// let votingMode = #snapshot; // or #dynamic({ totalVotingPower = ?1000 })
+        /// switch (await* proposalEngine.createProposal(proposerId, content, members, votingMode)) {
         ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
         ///   case (#err(error)) { /* Handle error */ };
         /// };
@@ -211,6 +227,7 @@ module {
             proposerId : Principal,
             content : TProposalContent,
             members : [Member],
+            votingMode : VotingMode,
         ) : async* Result.Result<Nat, CreateProposalError> {
 
             switch (await* onProposalValidate(content)) {
@@ -239,60 +256,7 @@ module {
                     members,
                     timeStart,
                     timeEnd,
-                ) with
-                var endTimerId = endTimerId;
-            };
-            proposals.put(nextProposalId, proposal);
-            nextProposalId += 1;
-            #ok(proposalId);
-        };
-
-        /// Creates a new real-time proposal with dynamic member management.
-        /// The proposer does NOT automatically vote on the proposal.
-        /// Members can be added dynamically during voting.
-        /// async* is due to potential execution of the proposal and validation function.
-        ///
-        /// ```motoko
-        /// let proposerId = ...;
-        /// let content = { /* Your proposal content here */ };
-        /// let totalVotingPower = 1000; // Total voting power for this proposal
-        /// switch (await* proposalEngine.createRealTimeProposal(proposerId, content, totalVotingPower)) {
-        ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
-        public func createRealTimeProposal<system>(
-            proposerId : Principal,
-            content : TProposalContent,
-            totalVotingPower : Nat,
-        ) : async* Result.Result<Nat, CreateProposalError> {
-
-            switch (await* onProposalValidate(content)) {
-                case (#ok) ();
-                case (#err(errors)) {
-                    return #err(#invalid(errors));
-                };
-            };
-
-            let timeStart = Time.now();
-
-            let proposalId = nextProposalId;
-            let (timeEnd, endTimerId) : (?Int, ?Nat) = switch (proposalDuration) {
-                case (?proposalDuration) {
-                    let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
-                    let timerId = createEndTimer<system>(proposalId, proposalDurationNanoseconds);
-                    (?(timeStart + proposalDurationNanoseconds), ?timerId);
-                };
-                case (null) (null, null);
-            };
-            let proposal : ProposalWithTimer<TProposalContent, TChoice> = {
-                ExtendedProposal.createRealTime<TProposalContent, TChoice>(
-                    proposalId,
-                    proposerId,
-                    content,
-                    totalVotingPower,
-                    timeStart,
-                    timeEnd,
+                    votingMode,
                 ) with
                 var endTimerId = endTimerId;
             };
@@ -317,18 +281,24 @@ module {
             member : Member,
         ) : Result.Result<(), AddMemberResult> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
-            
+
             switch (ExtendedProposal.addMember(proposal, member)) {
-                case (#ok(updatedProposal)) {
-                    proposals.put(proposalId, { updatedProposal with var endTimerId = proposal.endTimerId });
-                    #ok;
-                };
+                case (#ok) #ok;
                 case (#err(#alreadyExists)) #err(#alreadyExists);
-                case (#err(#notRealTimeProposal)) #err(#notRealTimeProposal);
+                case (#err(#votingNotDynamic)) #err(#votingNotDynamic);
                 case (#err(#votingClosed)) #err(#votingClosed);
             };
         };
 
+        /// Manually ends a proposal before its natural end time.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// switch (await* proposalEngine.endProposal(proposalId)) {
+        ///   case (#ok) { /* Proposal ended successfully */ };
+        ///   case (#err(#alreadyEnded)) { /* Proposal was already ended */ };
+        /// };
+        /// ```
         public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
             switch (proposal.status) {

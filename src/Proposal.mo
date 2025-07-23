@@ -28,10 +28,17 @@ module {
 
     public type ChoiceStatus = ExtendedProposal.ChoiceStatus<Bool>;
 
-    public type ProposalMode = ExtendedProposal.ProposalMode;
+    public type VotingMode = ExtendedProposal.VotingMode;
 
     public type AddMemberError = ExtendedProposal.AddMemberError;
 
+    /// Retrieves a vote for a specific voter on a proposal.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent> = ...;
+    /// let voterId : Principal = ...;
+    /// let ?vote : ?Vote = getVote(proposal, voterId) else Debug.trap("Vote not found");
+    /// ```
     public func getVote<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         voterId : Principal,
@@ -42,12 +49,24 @@ module {
         );
     };
 
+    /// Casts a vote on a proposal for the specified voter.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent> = ...;
+    /// let voterId : Principal = ...;
+    /// let vote : Bool = true; // true for yes, false for no
+    /// let allowVoteChange : Bool = false;
+    /// switch (vote(proposal, voterId, vote, allowVoteChange)) {
+    ///   case (#ok) { /* Vote successful */ };
+    ///   case (#err(error)) { /* Handle error */ };
+    /// };
+    /// ```
     public func vote<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         voterId : Principal,
         vote : Bool,
         allowVoteChange : Bool,
-    ) : Result.Result<VoteOk<TProposalContent>, VoteError> {
+    ) : Result.Result<(), VoteError> {
         ExtendedProposal.vote(
             proposal,
             voterId,
@@ -56,6 +75,13 @@ module {
         );
     };
 
+    /// Builds a voting summary for a proposal showing vote tallies.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent> = ...;
+    /// let summary : VotingSummary = buildVotingSummary(proposal);
+    /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
+    /// ```
     public func buildVotingSummary<TProposalContent>(
         proposal : Proposal<TProposalContent>
     ) : VotingSummary {
@@ -66,6 +92,18 @@ module {
         );
     };
 
+    /// Calculates the current status of voting for a proposal.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent> = ...;
+    /// let votingThreshold : VotingThreshold = #percent({ percent = 50; quorum = ?25 });
+    /// let forceEnd : Bool = false;
+    /// switch (calculateVoteStatus(proposal, votingThreshold, forceEnd)) {
+    ///   case (#determined(?choice)) { /* Proposal passed with choice */ };
+    ///   case (#determined(null)) { /* Proposal rejected */ };
+    ///   case (#undetermined) { /* Still voting */ };
+    /// };
+    /// ```
     public func calculateVoteStatus<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         votingThreshold : VotingThreshold,
@@ -80,6 +118,18 @@ module {
         );
     };
 
+    /// Creates a new proposal with the specified parameters.
+    ///
+    /// ```motoko
+    /// let id : Nat = 1;
+    /// let proposerId : Principal = ...;
+    /// let content = { /* Your proposal content */ };
+    /// let members : [Member] = [{ id = ...; votingPower = 100 }];
+    /// let timeStart : Time.Time = Time.now();
+    /// let timeEnd : ?Time.Time = ?(timeStart + 24 * 60 * 60 * 1_000_000_000); // 24 hours
+    /// let votingMode : VotingMode = #snapshot;
+    /// let proposal : Proposal<MyContent> = create(id, proposerId, content, members, timeStart, timeEnd, votingMode);
+    /// ```
     public func create<TProposalContent>(
         id : Nat,
         proposerId : Principal,
@@ -87,6 +137,7 @@ module {
         members : [Member],
         timeStart : Time.Time,
         timeEnd : ?Time.Time,
+        votingMode : VotingMode,
     ) : Proposal<TProposalContent> {
         ExtendedProposal.create<TProposalContent, Bool>(
             id,
@@ -95,32 +146,24 @@ module {
             members,
             timeStart,
             timeEnd,
-        );
-    };
-    
-
-    public func createRealTime<TProposalContent>(
-        id : Nat,
-        proposerId : Principal,
-        content : TProposalContent,
-        totalVotingPower : Nat,
-        timeStart : Time.Time,
-        timeEnd : ?Time.Time,
-    ) : Proposal<TProposalContent> {
-        ExtendedProposal.createRealTime<TProposalContent, Bool>(
-            id,
-            proposerId,
-            content,
-            totalVotingPower,
-            timeStart,
-            timeEnd,
+            votingMode,
         );
     };
 
+    /// Adds a member to a dynamic proposal.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent> = ...;
+    /// let member : Member = { id = Principal.fromText("..."); votingPower = 100 };
+    /// switch (addMember(proposal, member)) {
+    ///   case (#ok) { /* Member added successfully */ };
+    ///   case (#err(error)) { /* Handle error */ };
+    /// };
+    /// ```
     public func addMember<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         member : Member,
-    ) : Result.Result<Proposal<TProposalContent>, AddMemberError> {
+    ) : Result.Result<(), AddMemberError> {
         ExtendedProposal.addMember(proposal, member);
     };
 };

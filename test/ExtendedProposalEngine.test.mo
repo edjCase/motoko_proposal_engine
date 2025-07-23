@@ -46,6 +46,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -139,6 +140,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -200,6 +202,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -259,6 +262,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -322,6 +326,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -388,6 +393,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -440,6 +446,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -495,6 +502,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
@@ -551,6 +559,7 @@ await test(
                 description = "Test";
             },
             members,
+            #snapshot,
         );
         let #ok(proposalId) = createResult else Debug.trap("Failed to create proposal. Errors:" # debug_show (createResult));
 
