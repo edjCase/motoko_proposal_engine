@@ -47,7 +47,7 @@ module {
         ///
         /// ```motoko
         /// let proposalId : Nat = 1;
-        /// let ?proposal : ?ExtendedProposalEngine.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+        /// let ?proposal : ?Proposal<TProposalContent> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
         /// ```
         public func getProposal(id : Nat) : ?Proposal<TProposalContent> {
             internalEngine.getProposal(id);
@@ -58,16 +58,30 @@ module {
         /// ```motoko
         /// let count : Nat = 10; // Max proposals to return
         /// let offset : Nat = 0; // Proposals to skip
-        /// let pagedResult : ExtendedProposalEngine.PagedResult<ExtendedProposalEngine.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
+        /// let pagedResult : ExtendedProposalEngine.PagedResult<Proposal<TProposalContent>> = proposalEngine.getProposals(count, offset);
         /// ```
         public func getProposals(count : Nat, offset : Nat) : ExtendedProposalEngine.PagedResult<Proposal<TProposalContent>> {
             internalEngine.getProposals(count, offset);
         };
 
+        /// Retrieves a vote for a specific voter on a proposal.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let voterId : Principal = ...;
+        /// let ?vote : ?ExtendedProposalEngine.Vote<Bool> = proposalEngine.getVote(proposalId, voterId) else Debug.trap("Vote not found");
+        /// ```
         public func getVote(proposalId : Nat, voterId : Principal) : ?ExtendedProposalEngine.Vote<Bool> {
             internalEngine.getVote(proposalId, voterId);
         };
 
+        /// Builds a voting summary for a proposal showing vote tallies by choice.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let summary : Proposal.VotingSummary = proposalEngine.buildVotingSummary(proposalId);
+        /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
+        /// ```
         public func buildVotingSummary(proposalId : Nat) : Proposal.VotingSummary {
             internalEngine.buildVotingSummary(proposalId);
         };
@@ -97,7 +111,8 @@ module {
         /// let proposerId = ...;
         /// let content = { /* Your proposal content here */ };
         /// let members = [...]; // Snapshot of members to vote on the proposal
-        /// switch (await* proposalEngine.createProposal(proposerId, content, members)) {
+        /// let votingMode = #snapshot; // or #dynamic({ totalVotingPower = ?1000 })
+        /// switch (await* proposalEngine.createProposal(proposerId, content, members, votingMode)) {
         ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
         ///   case (#err(error)) { /* Handle error */ };
         /// };
@@ -111,6 +126,15 @@ module {
             await* internalEngine.createProposal(proposerId, content, members, votingMode);
         };
 
+        /// Manually ends a proposal before its natural end time.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// switch (await* proposalEngine.endProposal(proposalId)) {
+        ///   case (#ok) { /* Proposal ended successfully */ };
+        ///   case (#err(#alreadyEnded)) { /* Proposal was already ended */ };
+        /// };
+        /// ```
         public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
             await* internalEngine.endProposal(proposalId);
         };

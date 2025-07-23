@@ -155,12 +155,26 @@ module {
             };
         };
 
+        /// Retrieves a vote for a specific voter on a proposal.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let voterId : Principal = ...;
+        /// let ?vote : ?Vote<TChoice> = proposalEngine.getVote(proposalId, voterId) else Debug.trap("Vote not found");
+        /// ```
         public func getVote(proposalId : Nat, voterId : Principal) : ?Vote<TChoice> {
             let ?proposal = proposals.get(proposalId) else return null;
 
             ExtendedProposal.getVote<TProposalContent, TChoice>(proposal, voterId);
         };
 
+        /// Builds a voting summary for a proposal showing vote tallies by choice.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// let summary : VotingSummary<TChoice> = proposalEngine.buildVotingSummary(proposalId);
+        /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
+        /// ```
         public func buildVotingSummary(proposalId : Nat) : VotingSummary<TChoice> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
             ExtendedProposal.buildVotingSummary(proposal, equalChoice, hashChoice);
@@ -276,6 +290,15 @@ module {
             };
         };
 
+        /// Manually ends a proposal before its natural end time.
+        ///
+        /// ```motoko
+        /// let proposalId : Nat = 1;
+        /// switch (await* proposalEngine.endProposal(proposalId)) {
+        ///   case (#ok) { /* Proposal ended successfully */ };
+        ///   case (#err(#alreadyEnded)) { /* Proposal was already ended */ };
+        /// };
+        /// ```
         public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
             switch (proposal.status) {

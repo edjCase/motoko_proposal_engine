@@ -104,6 +104,18 @@ module {
         #votingClosed;
     };
 
+    /// Adds a member to a dynamic proposal.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent, MyChoice> = ...;
+    /// let member : Member = { id = Principal.fromText("..."); votingPower = 100 };
+    /// switch (addMember(proposal, member)) {
+    ///   case (#ok) { /* Member added successfully */ };
+    ///   case (#err(#alreadyExists)) { /* Member already exists */ };
+    ///   case (#err(#votingNotDynamic)) { /* Proposal is not dynamic */ };
+    ///   case (#err(#votingClosed)) { /* Voting is closed */ };
+    /// };
+    /// ```
     public func addMember<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         member : Member,
@@ -137,6 +149,13 @@ module {
         #ok;
     };
 
+    /// Retrieves a vote for a specific voter on a proposal.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent, MyChoice> = ...;
+    /// let voterId : Principal = ...;
+    /// let ?vote : ?Vote<MyChoice> = getVote(proposal, voterId) else Debug.trap("Vote not found");
+    /// ```
     public func getVote<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,
@@ -148,6 +167,20 @@ module {
         );
     };
 
+    /// Casts a vote on a proposal for the specified voter.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent, MyChoice> = ...;
+    /// let voterId : Principal = ...;
+    /// let vote : MyChoice = ...;
+    /// let allowVoteChange : Bool = false;
+    /// switch (vote(proposal, voterId, vote, allowVoteChange)) {
+    ///   case (#ok) { /* Vote successful */ };
+    ///   case (#err(#notEligible)) { /* Voter not eligible */ };
+    ///   case (#err(#alreadyVoted)) { /* Already voted and change not allowed */ };
+    ///   case (#err(#votingClosed)) { /* Voting period closed */ };
+    /// };
+    /// ```
     public func vote<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,
@@ -192,6 +225,15 @@ module {
         #ok;
     };
 
+    /// Builds a voting summary for a proposal showing vote tallies by choice.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent, MyChoice> = ...;
+    /// let equal : (MyChoice, MyChoice) -> Bool = ...;
+    /// let hash : (MyChoice) -> Nat32 = ...;
+    /// let summary : VotingSummary<MyChoice> = buildVotingSummary(proposal, equal, hash);
+    /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
+    /// ```
     public func buildVotingSummary<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         equal : (TChoice, TChoice) -> Bool,
@@ -234,6 +276,20 @@ module {
         };
     };
 
+    /// Calculates the current status of voting for a proposal.
+    ///
+    /// ```motoko
+    /// let proposal : Proposal<MyContent, MyChoice> = ...;
+    /// let votingThreshold : VotingThreshold = #percent({ percent = 50; quorum = ?25 });
+    /// let equalChoice : (MyChoice, MyChoice) -> Bool = ...;
+    /// let hashChoice : (MyChoice) -> Nat32 = ...;
+    /// let forceEnd : Bool = false;
+    /// switch (calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, forceEnd)) {
+    ///   case (#determined(?choice)) { /* Proposal passed with choice */ };
+    ///   case (#determined(null)) { /* Proposal rejected */ };
+    ///   case (#undetermined) { /* Still voting */ };
+    /// };
+    /// ```
     public func calculateVoteStatus<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         votingThreshold : VotingThreshold,
@@ -308,6 +364,18 @@ module {
         return #undetermined;
     };
 
+    /// Creates a new proposal with the specified parameters.
+    ///
+    /// ```motoko
+    /// let id : Nat = 1;
+    /// let proposerId : Principal = ...;
+    /// let content = { /* Your proposal content */ };
+    /// let members : [Member] = [{ id = ...; votingPower = 100 }];
+    /// let timeStart : Time.Time = Time.now();
+    /// let timeEnd : ?Time.Time = ?(timeStart + 24 * 60 * 60 * 1_000_000_000); // 24 hours
+    /// let votingMode : VotingMode = #snapshot;
+    /// let proposal : Proposal<MyContent, MyChoice> = create(id, proposerId, content, members, timeStart, timeEnd, votingMode);
+    /// ```
     public func create<TProposalContent, TChoice>(
         id : Nat,
         proposerId : Principal,
