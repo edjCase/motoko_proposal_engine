@@ -4,6 +4,7 @@ import ExtendedProposalEngine "ExtendedProposalEngine";
 import Proposal "Proposal";
 
 module {
+  
 
     public type StableData<TProposalContent> = ExtendedProposalEngine.StableData<TProposalContent, Bool>;
 
@@ -42,22 +43,11 @@ module {
         );
 
         /// Returns a proposal by its Id.
-        ///
-        /// ```motoko
-        /// let proposalId : Nat = 1;
-        /// let ?proposal : ?ExtendedProposalEngine.Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
-        /// ```
         public func getProposal(id : Nat) : ?Proposal<TProposalContent> {
             internalEngine.getProposal(id);
         };
 
         /// Retrieves a paged list of proposals.
-        ///
-        /// ```motoko
-        /// let count : Nat = 10; // Max proposals to return
-        /// let offset : Nat = 0; // Proposals to skip
-        /// let pagedResult : ExtendedProposalEngine.PagedResult<ExtendedProposalEngine.Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
-        /// ```
         public func getProposals(count : Nat, offset : Nat) : ExtendedProposalEngine.PagedResult<Proposal<TProposalContent>> {
             internalEngine.getProposals(count, offset);
         };
@@ -71,36 +61,12 @@ module {
         };
 
         /// Casts a vote on a proposal for the specified voter.
-        /// Will auto execute/reject the proposal if the voting threshold is reached.
-        /// async* is due to potential execution of the proposal.
-        ///
-        /// ```motoko
-        /// let proposalId : Nat = 1;
-        /// let voterId : Principal = ...;
-        /// let vote : Bool = true; // true for yes, false for no
-        /// switch (await* proposalEngine.vote(proposalId, voterId, vote)) {
-        ///   case (#ok) { /* Vote successful */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
         public func vote(proposalId : Nat, voterId : Principal, vote : Bool) : async* Result.Result<(), ExtendedProposalEngine.VoteError> {
             await* internalEngine.vote(proposalId, voterId, vote);
         };
 
         /// Creates a new proposal.
-        /// The proposer does NOT automatically vote on the proposal.
-        /// async* is due to potential execution of the proposal and validation function.
-        ///
-        /// ```motoko
-        /// let proposerId = ...;
-        /// let content = { /* Your proposal content here */ };
-        /// let members = [...]; // Snapshot of members to vote on the proposal
-        /// switch (await* proposalEngine.createProposal(proposerId, content, members)) {
-        ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
-        public func createProposal<system>(
+        public func createProposal<s>(
             proposerId : Principal,
             content : TProposalContent,
             members : [ExtendedProposalEngine.Member],
@@ -108,33 +74,7 @@ module {
             await* internalEngine.createProposal(proposerId, content, members);
         };
 
-        public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
-            await* internalEngine.endProposal(proposalId);
-        };
-
-        /// Converts the current state to stable data for upgrades.
-        ///
-        /// ```motoko
-        /// let stableData : ExtendedProposalEngine.StableData<ProposalContent> = proposalEngine.toStableData();
-        /// ```
-        public func toStableData() : StableData<TProposalContent> {
-            internalEngine.toStableData();
-        };
-
         /// Creates a new real-time proposal with dynamic member management.
-        /// The proposer does NOT automatically vote on the proposal.
-        /// Members can be added dynamically during voting.
-        /// async* is due to potential execution of the proposal and validation function.
-        ///
-        /// ```motoko
-        /// let proposerId = ...;
-        /// let content = { /* Your proposal content here */ };
-        /// let totalVotingPower = 1000; // Total voting power for this proposal
-        /// switch (await* proposalEngine.createRealTimeProposal(proposerId, content, totalVotingPower)) {
-        ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
         public func createRealTimeProposal<system>(
             proposerId : Principal,
             content : TProposalContent,
@@ -144,22 +84,21 @@ module {
         };
 
         /// Adds a member to a real-time proposal.
-        /// Only works with proposals created using createRealTimeProposal.
-        ///
-        /// ```motoko
-        /// let proposalId : Nat = 1;
-        /// let member = { id = Principal.fromText("..."); votingPower = 100 };
-        /// switch (proposalEngine.addMember(proposalId, member)) {
-        ///   case (#ok) { /* Member added successfully */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
         public func addMember(
             proposalId : Nat,
             member : ExtendedProposalEngine.Member,
         ) : Result.Result<(), ExtendedProposalEngine.AddMemberResult> {
             internalEngine.addMember(proposalId, member);
-        }
+        };
+
+        public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
+            await* internalEngine.endProposal(proposalId);
+        };
+
+        /// Converts the current state to stable data for upgrades.
+        public func toStableData() : StableData<TProposalContent> {
+            internalEngine.toStableData();
+        };
 
     };
 };

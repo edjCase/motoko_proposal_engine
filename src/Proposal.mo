@@ -28,6 +28,10 @@ module {
 
     public type ChoiceStatus = ExtendedProposal.ChoiceStatus<Bool>;
 
+    public type ProposalMode = ExtendedProposal.ProposalMode;
+
+    public type AddMemberError = ExtendedProposal.AddMemberError;
+
     public func getVote<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         voterId : Principal,
@@ -92,5 +96,31 @@ module {
             timeStart,
             timeEnd,
         );
+    };
+    
+
+    public func createRealTime<TProposalContent>(
+        id : Nat,
+        proposerId : Principal,
+        content : TProposalContent,
+        totalVotingPower : Nat,
+        timeStart : Time.Time,
+        timeEnd : ?Time.Time,
+    ) : Proposal<TProposalContent> {
+        ExtendedProposal.createRealTime<TProposalContent, Bool>(
+            id,
+            proposerId,
+            content,
+            totalVotingPower,
+            timeStart,
+            timeEnd,
+        );
+    };
+
+    public func addMember<TProposalContent>(
+        proposal : Proposal<TProposalContent>,
+        member : Member,
+    ) : Result.Result<Proposal<TProposalContent>, AddMemberError> {
+        ExtendedProposal.addMember(proposal, member);
     };
 };
