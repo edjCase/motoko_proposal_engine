@@ -17,6 +17,8 @@ module {
 
     public type Proposal<TProposalContent> = Proposal.Proposal<TProposalContent>;
 
+    public type VotingMode = Proposal.VotingMode;
+
     public class ProposalEngine<system, TProposalContent>(
         data : StableData<TProposalContent>,
         onProposalAdopt : (Proposal<TProposalContent>) -> async* Result.Result<(), Text>,
@@ -104,43 +106,13 @@ module {
             proposerId : Principal,
             content : TProposalContent,
             members : [ExtendedProposalEngine.Member],
+            votingMode : VotingMode,
         ) : async* Result.Result<Nat, ExtendedProposalEngine.CreateProposalError> {
-            await* internalEngine.createProposal(proposerId, content, members);
+            await* internalEngine.createProposal(proposerId, content, members, votingMode);
         };
 
         public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
             await* internalEngine.endProposal(proposalId);
-        };
-
-        /// Converts the current state to stable data for upgrades.
-        ///
-        /// ```motoko
-        /// let stableData : ExtendedProposalEngine.StableData<ProposalContent> = proposalEngine.toStableData();
-        /// ```
-        public func toStableData() : StableData<TProposalContent> {
-            internalEngine.toStableData();
-        };
-
-        /// Creates a new real-time proposal with dynamic member management.
-        /// The proposer does NOT automatically vote on the proposal.
-        /// Members can be added dynamically during voting.
-        /// async* is due to potential execution of the proposal and validation function.
-        ///
-        /// ```motoko
-        /// let proposerId = ...;
-        /// let content = { /* Your proposal content here */ };
-        /// let totalVotingPower = 1000; // Total voting power for this proposal
-        /// switch (await* proposalEngine.createRealTimeProposal(proposerId, content, totalVotingPower)) {
-        ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
-        public func createRealTimeProposal<system>(
-            proposerId : Principal,
-            content : TProposalContent,
-            totalVotingPower : Nat,
-        ) : async* Result.Result<Nat, ExtendedProposalEngine.CreateProposalError> {
-            await* internalEngine.createRealTimeProposal(proposerId, content, totalVotingPower);
         };
 
         /// Adds a member to a real-time proposal.
@@ -159,7 +131,16 @@ module {
             member : ExtendedProposalEngine.Member,
         ) : Result.Result<(), ExtendedProposalEngine.AddMemberResult> {
             internalEngine.addMember(proposalId, member);
-        }
+        };
+
+        /// Converts the current state to stable data for upgrades.
+        ///
+        /// ```motoko
+        /// let stableData : ExtendedProposalEngine.StableData<ProposalContent> = proposalEngine.toStableData();
+        /// ```
+        public func toStableData() : StableData<TProposalContent> {
+            internalEngine.toStableData();
+        };
 
     };
 };

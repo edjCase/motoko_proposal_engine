@@ -29,6 +29,8 @@ module {
         totalCount : Nat;
     };
 
+    public type VotingMode = ExtendedProposal.VotingMode;
+
     public type VotingThreshold = ExtendedProposal.VotingThreshold;
 
     public type Duration = ExtendedProposal.Duration;
@@ -49,7 +51,7 @@ module {
         #ok;
         #alreadyExists;
         #proposalNotFound;
-        #notRealTimeProposal;
+        #votingNotDynamic;
         #votingClosed;
     };
 
@@ -211,6 +213,7 @@ module {
             proposerId : Principal,
             content : TProposalContent,
             members : [Member],
+            votingMode : VotingMode,
         ) : async* Result.Result<Nat, CreateProposalError> {
 
             switch (await* onProposalValidate(content)) {
@@ -239,60 +242,7 @@ module {
                     members,
                     timeStart,
                     timeEnd,
-                ) with
-                var endTimerId = endTimerId;
-            };
-            proposals.put(nextProposalId, proposal);
-            nextProposalId += 1;
-            #ok(proposalId);
-        };
-
-        /// Creates a new real-time proposal with dynamic member management.
-        /// The proposer does NOT automatically vote on the proposal.
-        /// Members can be added dynamically during voting.
-        /// async* is due to potential execution of the proposal and validation function.
-        ///
-        /// ```motoko
-        /// let proposerId = ...;
-        /// let content = { /* Your proposal content here */ };
-        /// let totalVotingPower = 1000; // Total voting power for this proposal
-        /// switch (await* proposalEngine.createRealTimeProposal(proposerId, content, totalVotingPower)) {
-        ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
-        ///   case (#err(error)) { /* Handle error */ };
-        /// };
-        /// ```
-        public func createRealTimeProposal<system>(
-            proposerId : Principal,
-            content : TProposalContent,
-            totalVotingPower : Nat,
-        ) : async* Result.Result<Nat, CreateProposalError> {
-
-            switch (await* onProposalValidate(content)) {
-                case (#ok) ();
-                case (#err(errors)) {
-                    return #err(#invalid(errors));
-                };
-            };
-
-            let timeStart = Time.now();
-
-            let proposalId = nextProposalId;
-            let (timeEnd, endTimerId) : (?Int, ?Nat) = switch (proposalDuration) {
-                case (?proposalDuration) {
-                    let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
-                    let timerId = createEndTimer<system>(proposalId, proposalDurationNanoseconds);
-                    (?(timeStart + proposalDurationNanoseconds), ?timerId);
-                };
-                case (null) (null, null);
-            };
-            let proposal : ProposalWithTimer<TProposalContent, TChoice> = {
-                ExtendedProposal.createRealTime<TProposalContent, TChoice>(
-                    proposalId,
-                    proposerId,
-                    content,
-                    totalVotingPower,
-                    timeStart,
-                    timeEnd,
+                    votingMode,
                 ) with
                 var endTimerId = endTimerId;
             };
@@ -317,14 +267,14 @@ module {
             member : Member,
         ) : Result.Result<(), AddMemberResult> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
-            
+
             switch (ExtendedProposal.addMember(proposal, member)) {
                 case (#ok(updatedProposal)) {
                     proposals.put(proposalId, { updatedProposal with var endTimerId = proposal.endTimerId });
                     #ok;
                 };
                 case (#err(#alreadyExists)) #err(#alreadyExists);
-                case (#err(#notRealTimeProposal)) #err(#notRealTimeProposal);
+                case (#err(#votingNotDynamic)) #err(#votingNotDynamic);
                 case (#err(#votingClosed)) #err(#votingClosed);
             };
         };
