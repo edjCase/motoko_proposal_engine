@@ -47,7 +47,7 @@ module {
         voterId : Principal,
         vote : Bool,
         allowVoteChange : Bool,
-    ) : Result.Result<VoteOk<TProposalContent>, VoteError> {
+    ) : Result.Result<(), VoteError> {
         ExtendedProposal.vote(
             proposal,
             voterId,
@@ -103,7 +103,7 @@ module {
     public func addMember<TProposalContent>(
         proposal : Proposal<TProposalContent>,
         member : Member,
-    ) : Result.Result<Proposal<TProposalContent>, AddMemberError> {
+    ) : Result.Result<(), AddMemberError> {
         ExtendedProposal.addMember(proposal, member);
     };
 };

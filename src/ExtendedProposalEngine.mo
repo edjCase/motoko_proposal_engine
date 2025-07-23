@@ -173,7 +173,7 @@ module {
         /// ```motoko
         /// let proposalId : Nat = 1;
         /// let voterId : Principal = ...;
-        /// let vote : Bool = true; // true for yes, false for no
+        /// let vote : TChoice = ...; // Your choice value
         /// switch (await* proposalEngine.vote(proposalId, voterId, vote)) {
         ///   case (#ok) { /* Vote successful */ };
         ///   case (#err(error)) { /* Handle error */ };
@@ -182,9 +182,8 @@ module {
         public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), VoteError> {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
             switch (ExtendedProposal.vote(proposal, voterId, vote, allowVoteChange)) {
-                case (#ok(ok)) {
-                    proposals.put(proposalId, { ok.updatedProposal with var endTimerId = proposal.endTimerId });
-                    let choiceStatus = ExtendedProposal.calculateVoteStatus(ok.updatedProposal, votingThreshold, equalChoice, hashChoice, false);
+                case (#ok) {
+                    let choiceStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, false);
                     switch (choiceStatus) {
                         case (#determined(choice)) {
                             await* executeProposal(proposalId, proposals, choice);
@@ -204,7 +203,8 @@ module {
         /// let proposerId = ...;
         /// let content = { /* Your proposal content here */ };
         /// let members = [...]; // Snapshot of members to vote on the proposal
-        /// switch (await* proposalEngine.createProposal(proposerId, content, members)) {
+        /// let votingMode = #snapshot; // or #dynamic({ totalVotingPower = ?1000 })
+        /// switch (await* proposalEngine.createProposal(proposerId, content, members, votingMode)) {
         ///   case (#ok(proposalId)) { /* Use new proposal ID */ };
         ///   case (#err(error)) { /* Handle error */ };
         /// };
@@ -269,10 +269,7 @@ module {
             let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
 
             switch (ExtendedProposal.addMember(proposal, member)) {
-                case (#ok(updatedProposal)) {
-                    proposals.put(proposalId, { updatedProposal with var endTimerId = proposal.endTimerId });
-                    #ok;
-                };
+                case (#ok) #ok;
                 case (#err(#alreadyExists)) #err(#alreadyExists);
                 case (#err(#votingNotDynamic)) #err(#votingNotDynamic);
                 case (#err(#votingClosed)) #err(#votingClosed);

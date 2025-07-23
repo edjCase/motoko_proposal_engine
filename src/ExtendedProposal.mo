@@ -7,7 +7,7 @@ import Iter "mo:base/Iter";
 import Buffer "mo:base/Buffer";
 import Float "mo:base/Float";
 import Int "mo:base/Int";
-import IterTools "mo:itertools/Iter";
+import BTree "mo:stableheapbtreemap/BTree";
 
 module {
 
@@ -40,7 +40,7 @@ module {
         timeEnd : ?Int;
         votingMode : VotingMode;
         content : TProposalContent;
-        votes : [(Principal, Vote<TChoice>)];
+        votes : BTree.BTree<Principal, Vote<TChoice>>;
         status : ProposalStatus<TChoice>;
     };
 
@@ -94,7 +94,7 @@ module {
         #undetermined;
     };
     type MinProposal<TChoice> = {
-        votes : [(Principal, Vote<TChoice>)];
+        votes : BTree.BTree<Principal, Vote<TChoice>>;
         status : ProposalStatus<TChoice>;
     };
 
@@ -107,7 +107,7 @@ module {
     public func addMember<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         member : Member,
-    ) : Result.Result<Proposal<TProposalContent, TChoice>, AddMemberError> {
+    ) : Result.Result<(), AddMemberError> {
         switch (proposal.votingMode) {
             case (#snapshot(_)) return #err(#votingNotDynamic);
             case (#dynamic(_)) ();
@@ -123,34 +123,29 @@ module {
             case (null) ();
         };
 
-        // Add vote entry
-        let memberExists = IterTools.any(
-            proposal.votes.vals(),
-            func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == member.id,
-        );
-        if (memberExists) {
+        if (BTree.has(proposal.votes, Principal.compare, member.id)) {
             return #err(#alreadyExists);
         };
-        let newVotes = Buffer.fromArray<(Principal, Vote<TChoice>)>(proposal.votes);
-        newVotes.add((member.id, { choice = null; votingPower = member.votingPower }));
+        // Add vote entry with no vote
+        ignore BTree.insert(
+            proposal.votes,
+            Principal.compare,
+            member.id,
+            { choice = null; votingPower = member.votingPower },
+        );
 
-        let updatedProposal = {
-            proposal with
-            votes = Buffer.toArray(newVotes);
-        };
-
-        #ok(updatedProposal);
+        #ok;
     };
 
     public func getVote<TProposalContent, TChoice>(
         proposal : Proposal<TProposalContent, TChoice>,
         voterId : Principal,
     ) : ?Vote<TChoice> {
-        let ?(_, vote) = IterTools.find(
-            proposal.votes.vals(),
-            func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
-        ) else return null;
-        ?vote;
+        BTree.get(
+            proposal.votes,
+            Principal.compare,
+            voterId,
+        );
     };
 
     public func vote<TProposalContent, TChoice>(
@@ -158,7 +153,7 @@ module {
         voterId : Principal,
         vote : TChoice,
         allowVoteChange : Bool,
-    ) : Result.Result<VoteOk<TProposalContent, TChoice>, VoteError> {
+    ) : Result.Result<(), VoteError> {
         let now = Time.now();
         if (proposal.timeStart > now) {
             return #err(#votingClosed);
@@ -177,27 +172,24 @@ module {
             case (null) ();
         };
 
-        let ?voteIndex = IterTools.findIndex(
-            proposal.votes.vals(),
-            func((id, _) : (Principal, Vote<TChoice>)) : Bool = id == voterId,
+        let ?existingVote = BTree.get(
+            proposal.votes,
+            Principal.compare,
+            voterId,
         ) else return #err(#notEligible); // Only allow members to vote who existed when the proposal was created
 
-        let (_, existingVote) = proposal.votes[voteIndex];
         if (not allowVoteChange) {
             let null = existingVote.choice else return #err(#alreadyVoted);
         };
 
-        let newVotes = Buffer.fromArray<(Principal, Vote<TChoice>)>(proposal.votes);
-        newVotes.put(voteIndex, (voterId, { existingVote with choice = ?vote }));
+        ignore BTree.insert(
+            proposal.votes,
+            Principal.compare,
+            voterId,
+            { existingVote with choice = ?vote },
+        );
 
-        let updatedProposal = {
-            proposal with
-            votes = Buffer.toArray(newVotes);
-        };
-
-        #ok({
-            updatedProposal = updatedProposal;
-        });
+        #ok;
     };
 
     public func buildVotingSummary<TProposalContent, TChoice>(
@@ -211,7 +203,7 @@ module {
             case (#dynamic({ totalVotingPower = ?totalVotingPower })) totalVotingPower;
             case (#snapshot(_) or #dynamic({ totalVotingPower = null })) {
                 var totalVotingPower = 0;
-                for ((voterId, vote) in proposal.votes.vals()) {
+                for ((voterId, vote) in BTree.entries(proposal.votes)) {
                     switch (vote.choice) {
                         case (null) {
                             undecidedVotingPower += vote.votingPower;
@@ -325,12 +317,15 @@ module {
         timeEnd : ?Time.Time,
         votingMode : VotingMode,
     ) : Proposal<TProposalContent, TChoice> {
-        let votes = members.vals()
-        |> Iter.map<Member, (Principal, Vote<TChoice>)>(
-            _,
-            func(member : Member) : (Principal, Vote<TChoice>) = (member.id, { choice = null; votingPower = member.votingPower }),
-        )
-        |> Iter.toArray(_);
+        let votes = BTree.init<Principal, Vote<TChoice>>(null);
+        for (member in members.vals()) {
+            ignore BTree.insert(
+                votes,
+                Principal.compare,
+                member.id,
+                { choice = null; votingPower = member.votingPower },
+            );
+        };
         {
             id = id;
             proposerId = proposerId;

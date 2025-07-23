@@ -3,6 +3,7 @@ import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
 import Result "mo:base/Result";
 import ExtendedProposalEngine "../src/ExtendedProposalEngine";
+import BTree "mo:stableheapbtreemap/BTree";
 
 await suite(
     "ExtendedProposalEngine Real-time Tests",
@@ -81,7 +82,7 @@ await suite(
                 let #ok(proposalId) = createResult else Debug.trap("Failed to create real-time proposal");
 
                 let ?proposal = engine.getProposal(proposalId) else Debug.trap("Failed to get proposal");
-                assert proposal.votes == [];
+                assert BTree.size(proposal.votes) == 0;
 
                 Debug.print("✓ Real-time proposal with custom choices created successfully");
             },

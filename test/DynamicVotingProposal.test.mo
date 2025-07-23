@@ -2,6 +2,7 @@ import { test; suite } "mo:test/async";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
 import Result "mo:base/Result";
+import BTree "mo:stableheapbtreemap/BTree";
 import ProposalEngine "../src/ProposalEngine";
 import ExtendedProposal "../src/ExtendedProposal";
 
@@ -49,7 +50,7 @@ await suite(
                 // Verify proposal was created correctly
                 assert proposal.id == proposalId;
                 assert proposal.proposerId == proposerId;
-                assert proposal.votes == [];
+                assert BTree.size(proposal.votes) == 0;
 
                 Debug.print("✓ Real-time proposal created successfully");
             },
@@ -99,7 +100,7 @@ await suite(
                 let #ok = addResult2 else Debug.trap("Failed to add member 2: " # debug_show (addResult2));
 
                 let ?proposal = engine.getProposal(proposalId) else Debug.trap("Failed to get proposal");
-                assert proposal.votes.size() == 2;
+                assert BTree.size(proposal.votes) == 2;
 
                 Debug.print("✓ Members added successfully to real-time proposal");
             },
@@ -359,20 +360,19 @@ await suite(
                     case (_) Debug.trap("Expected dynamic voting mode");
                 };
 
-                assert proposal.votes == [];
+                assert BTree.size(proposal.votes) == 0;
 
                 // Add member 1
                 let addResult1 = ExtendedProposal.addMember(proposal, { votingPower = 100; id = member1 });
-                let #ok(proposal1) = addResult1 else Debug.trap("Add member 1 failed: " # debug_show (addResult1));
+                let #ok = addResult1 else Debug.trap("Add member 1 failed: " # debug_show (addResult1));
 
-                assert proposal1.votes.size() == 1;
-                let (memberId, vote) = proposal1.votes[0];
-                assert memberId == member1;
+                assert BTree.size(proposal.votes) == 1;
+                let ?vote = BTree.get(proposal.votes, Principal.compare, member1) else Debug.trap("Member 1 vote not found");
                 assert vote.votingPower == 100;
                 assert vote.choice == null;
 
                 // Try to add same member again - should fail
-                let addResult2 = ExtendedProposal.addMember(proposal1, { votingPower = 150; id = member1 });
+                let addResult2 = ExtendedProposal.addMember(proposal, { votingPower = 150; id = member1 });
                 let #err(#alreadyExists) = addResult2 else Debug.trap("Expected #alreadyExists: " # debug_show (addResult2));
 
                 Debug.print("✓ ExtendedProposal.addMember works correctly");
