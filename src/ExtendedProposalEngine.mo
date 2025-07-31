@@ -106,16 +106,30 @@ module {
                 proposal.endTimerId := null;
                 switch (proposal.status) {
                     case (#open) {
-                        switch (proposalDuration) {
-                            case (?proposalDuration) {
-                                let proposalDurationNanoseconds = durationToNanoseconds(proposalDuration);
-                                let endTimerId = createEndTimer<system>(proposal.id, proposalDurationNanoseconds);
-                                proposal.endTimerId := ?endTimerId;
+                        switch (proposal.timeEnd) {
+                            case (?timeEnd) {
+                                let currentTime = Time.now();
+                                if (timeEnd > currentTime) {
+                                    // Only create timer if proposal hasn't expired yet
+                                    let remainingNanoseconds = Int.abs(timeEnd - currentTime);
+                                    Debug.print("🔄 RESET_TIMERS: Proposal " # Nat.toText(proposal.id) # " has " # Nat.toText(remainingNanoseconds) # " nanoseconds remaining");
+                                    let endTimerId = createEndTimer<system>(proposal.id, remainingNanoseconds);
+                                    proposal.endTimerId := ?endTimerId;
+                                } else {
+                                    // Proposal has already expired, end it immediately
+                                    Debug.print("🔄 RESET_TIMERS: Proposal " # Nat.toText(proposal.id) # " has already expired, ending immediately");
+                                    // Note: We can't call endProposal here directly as it's async*, 
+                                    // but the timer mechanism will handle this
+                                    let endTimerId = createEndTimer<system>(proposal.id, 1); // 1 nanosecond delay
+                                    proposal.endTimerId := ?endTimerId;
+                                };
                             };
-                            case (null) (); // Skip timer creation
+                            case (null) {
+                                Debug.print("🔄 RESET_TIMERS: Proposal " # Nat.toText(proposal.id) # " has no end time, skipping timer creation");
+                            }; // No end time, skip timer creation
                         };
                     };
-                    case (_) (); // Skip timer creation
+                    case (_) (); // Skip timer creation for non-open proposals
                 };
             };
         };
@@ -301,11 +315,28 @@ module {
         /// ```
         public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
             let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
+            Debug.print("🏛️  ENGINE: endProposal called for ID: " # Nat.toText(proposalId));
             switch (proposal.status) {
                 case (#open) {
-                    let choice = switch (ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, true)) {
-                        case (#determined(choice)) choice;
-                        case (#undetermined) null;
+                    Debug.print("🏛️  ENGINE: Proposal is open, calculating vote status...");
+                    let voteStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, true);
+                    let choice = switch (voteStatus) {
+                        case (#determined(choice)) {
+                            Debug.print("🏛️  ENGINE: Vote status: determined");
+                            switch(choice) {
+                                case(?_c) Debug.print("🏛️  ENGINE: Determined choice exists");
+                                case(null) Debug.print("🏛️  ENGINE: Determined choice is null");
+                            };
+                            choice;
+                        };
+                        case (#undetermined) {
+                            Debug.print("🏛️  ENGINE: Vote status: undetermined, choice will be null");
+                            null;
+                        };
+                    };
+                    switch(choice) {
+                        case(?c) Debug.print("🏛️  ENGINE: Final choice for execution: exists");
+                        case(null) Debug.print("🏛️  ENGINE: Final choice for execution: null");
                     };
                     await* executeProposal(proposalId, proposals, choice);
                     #ok;
@@ -402,6 +433,13 @@ module {
                     error = Error.message(e);
                 });
             };
+            
+            Debug.print("🏛️  ENGINE: Proposal " # Nat.toText(proposalId) # " execution completed with status: " # debug_show(switch(newStatus){
+              case (#open) "open";
+              case (#executing(_)) "executing at" ;
+              case (#executed(_)) "executed at";
+              case (#failedToExecute(_)) "failed at ";
+            }));
 
             proposals.put(
                 proposalId,
