@@ -1,12 +1,13 @@
-import Time "mo:base/Time";
-import Result "mo:base/Result";
-import Principal "mo:base/Principal";
-import HashMap "mo:base/HashMap";
-import Option "mo:base/Option";
-import Iter "mo:base/Iter";
-import Buffer "mo:base/Buffer";
-import Float "mo:base/Float";
-import Int "mo:base/Int";
+import Time "mo:core/Time";
+import Result "mo:core/Result";
+import Principal "mo:core/Principal";
+import Map "mo:core/Map";
+import Option "mo:core/Option";
+import Iter "mo:core/Iter";
+import List "mo:core/List";
+import Float "mo:core/Float";
+import Int "mo:core/Int";
+import Order "mo:core/Order";
 import BTree "mo:stableheapbtreemap/BTree";
 
 module {
@@ -33,15 +34,18 @@ module {
     };
   };
 
-  public type Proposal<TProposalContent, TChoice> = {
-    id : Nat;
+  public type ProposalData<TProposalContent, TChoice> = {
     proposerId : Principal;
-    timeStart : Int;
-    timeEnd : ?Int;
-    votingMode : VotingMode;
     content : TProposalContent;
+    timeStart : Time.Time;
+    timeEnd : ?Time.Time;
+    votingMode : VotingMode;
     votes : BTree.BTree<Principal, Vote<TChoice>>;
     status : ProposalStatus<TChoice>;
+  };
+
+  public type Proposal<TProposalContent, TChoice> = ProposalData<TProposalContent, TChoice> and {
+    id : Nat;
   };
 
   public type ProposalStatus<TChoice> = {
@@ -107,7 +111,7 @@ module {
   /// Adds a member to a dynamic proposal.
   ///
   /// ```motoko
-  /// let proposal : Proposal<MyContent, MyChoice> = ...;
+  /// let proposal : ProposalData<MyContent, MyChoice> = ...;
   /// let member : Member = { id = Principal.fromText("..."); votingPower = 100 };
   /// switch (addMember(proposal, member)) {
   ///   case (#ok) { /* Member added successfully */ };
@@ -117,7 +121,7 @@ module {
   /// };
   /// ```
   public func addMember<TProposalContent, TChoice>(
-    proposal : Proposal<TProposalContent, TChoice>,
+    proposal : ProposalData<TProposalContent, TChoice>,
     member : Member,
   ) : Result.Result<(), AddMemberError> {
     switch (proposal.votingMode) {
@@ -152,12 +156,12 @@ module {
   /// Retrieves a vote for a specific voter on a proposal.
   ///
   /// ```motoko
-  /// let proposal : Proposal<MyContent, MyChoice> = ...;
+  /// let proposal : ProposalData<MyContent, MyChoice> = ...;
   /// let voterId : Principal = ...;
-  /// let ?vote : ?Vote<MyChoice> = getVote(proposal, voterId) else Debug.trap("Vote not found");
+  /// let ?vote : ?Vote<MyChoice> = getVote(proposal, voterId) else Runtime.trap("Vote not found");
   /// ```
   public func getVote<TProposalContent, TChoice>(
-    proposal : Proposal<TProposalContent, TChoice>,
+    proposal : ProposalData<TProposalContent, TChoice>,
     voterId : Principal,
   ) : ?Vote<TChoice> {
     BTree.get(
@@ -170,7 +174,7 @@ module {
   /// Casts a vote on a proposal for the specified voter.
   ///
   /// ```motoko
-  /// let proposal : Proposal<MyContent, MyChoice> = ...;
+  /// let proposal : ProposalData<MyContent, MyChoice> = ...;
   /// let voterId : Principal = ...;
   /// let vote : MyChoice = ...;
   /// let allowVoteChange : Bool = false;
@@ -182,7 +186,7 @@ module {
   /// };
   /// ```
   public func vote<TProposalContent, TChoice>(
-    proposal : Proposal<TProposalContent, TChoice>,
+    proposal : ProposalData<TProposalContent, TChoice>,
     voterId : Principal,
     vote : TChoice,
     allowVoteChange : Bool,
@@ -228,19 +232,17 @@ module {
   /// Builds a voting summary for a proposal showing vote tallies by choice.
   ///
   /// ```motoko
-  /// let proposal : Proposal<MyContent, MyChoice> = ...;
-  /// let equal : (MyChoice, MyChoice) -> Bool = ...;
-  /// let hash : (MyChoice) -> Nat32 = ...;
-  /// let summary : VotingSummary<MyChoice> = buildVotingSummary(proposal, equal, hash);
+  /// let proposal : ProposalData<MyContent, MyChoice> = ...;
+  /// let compare : (MyChoice, MyChoice) -> Order.Order = ...;
+  /// let summary : VotingSummary<MyChoice> = buildVotingSummary(proposal, compare);
   /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
   /// ```
   public func buildVotingSummary<TProposalContent, TChoice>(
-    proposal : Proposal<TProposalContent, TChoice>,
-    equal : (TChoice, TChoice) -> Bool,
-    hash : (TChoice) -> Nat32,
+    proposal : ProposalData<TProposalContent, TChoice>,
+    compare : (TChoice, TChoice) -> Order.Order,
   ) : VotingSummary<TChoice> {
 
-    let choices = HashMap.HashMap<TChoice, Nat>(5, equal, hash);
+    let choices = Map.empty<TChoice, Nat>();
     var undecidedVotingPower = 0;
     let totalVotingPower = switch (proposal.votingMode) {
       case (#dynamic({ totalVotingPower = ?totalVotingPower })) {
@@ -256,8 +258,8 @@ module {
               undecidedVotingPower += vote.votingPower;
             };
             case (?choice) {
-              let currentVotingPower = Option.get(choices.get(choice), 0);
-              choices.put(choice, currentVotingPower + vote.votingPower);
+              let currentVotingPower = Option.get(Map.get(choices, compare, choice), 0);
+              Map.add(choices, compare, choice, currentVotingPower + vote.votingPower);
             };
           };
           totalVotingPower += vote.votingPower;
@@ -268,7 +270,7 @@ module {
 
     let choiceArray = Iter.toArray(
       Iter.map(
-        choices.entries(),
+        Map.entries(choices),
         func((choice, votingPower) : (TChoice, Nat)) : ChoiceVotingPower<TChoice> = {
           choice = choice;
           votingPower = votingPower;
@@ -286,25 +288,23 @@ module {
   /// Calculates the current status of voting for a proposal.
   ///
   /// ```motoko
-  /// let proposal : Proposal<MyContent, MyChoice> = ...;
+  /// let proposal : ProposalData<MyContent, MyChoice> = ...;
   /// let votingThreshold : VotingThreshold = #percent({ percent = 50; quorum = ?25 });
-  /// let equalChoice : (MyChoice, MyChoice) -> Bool = ...;
-  /// let hashChoice : (MyChoice) -> Nat32 = ...;
+  /// let compareChoice : (MyChoice, MyChoice) -> Order.Order = ...;
   /// let forceEnd : Bool = false;
-  /// switch (calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, forceEnd)) {
+  /// switch (calculateVoteStatus(proposal, votingThreshold, compareChoice, forceEnd)) {
   ///   case (#determined(?choice)) { /* Proposal passed with choice */ };
   ///   case (#determined(null)) { /* Proposal rejected */ };
   ///   case (#undetermined) { /* Still voting */ };
   /// };
   /// ```
   public func calculateVoteStatus<TProposalContent, TChoice>(
-    proposal : Proposal<TProposalContent, TChoice>,
+    proposal : ProposalData<TProposalContent, TChoice>,
     votingThreshold : VotingThreshold,
-    equalChoice : (TChoice, TChoice) -> Bool,
-    hashChoice : (TChoice) -> Nat32,
+    compareChoice : (TChoice, TChoice) -> Order.Order,
     forceEnd : Bool,
   ) : ChoiceStatus<TChoice> {
-    let { totalVotingPower; undecidedVotingPower; votingPowerByChoice } = buildVotingSummary(proposal, equalChoice, hashChoice);
+    let { totalVotingPower; undecidedVotingPower; votingPowerByChoice } = buildVotingSummary(proposal, compareChoice);
     let votedVotingPower : Nat = totalVotingPower - undecidedVotingPower;
 
     switch (votingThreshold) {
@@ -343,26 +343,26 @@ module {
 
           let pluralityChoices = {
             var votingPower = 0;
-            choices = Buffer.Buffer<TChoice>(1);
+            choices = List.empty<TChoice>();
           };
           for (choice in votingPowerByChoice.vals()) {
             if (choice.votingPower > pluralityChoices.votingPower) {
               pluralityChoices.votingPower := choice.votingPower;
-              pluralityChoices.choices.clear();
-              pluralityChoices.choices.add(choice.choice);
+              List.clear(pluralityChoices.choices);
+              List.add(pluralityChoices.choices, choice.choice);
             } else if (choice.votingPower == pluralityChoices.votingPower) {
-              pluralityChoices.choices.add(choice.choice);
+              List.add(pluralityChoices.choices, choice.choice);
             };
           };
 
-          if (pluralityChoices.choices.size() == 1) {
+          if (List.size(pluralityChoices.choices) == 1) {
             if (pluralityChoices.votingPower >= voteThreshold) {
               // Real-time proposals should NOT auto-execute, even when threshold is reached
               switch (proposal.votingMode) {
                 case (#dynamic(_)) {
 
                   if (hasEnded) {
-                    let winningChoice = Buffer.toArray(pluralityChoices.choices)[0];
+                    let winningChoice = List.get(pluralityChoices.choices, 0);
 
                     return #determined(?winningChoice);
                   } else {
@@ -370,12 +370,12 @@ module {
                   };
                 };
                 case (#snapshot(_)) {
-                  let winningChoice = Buffer.toArray(pluralityChoices.choices)[0];
+                  let winningChoice = List.get(pluralityChoices.choices, 0);
                   return #determined(?winningChoice);
                 };
               };
             };
-          } else if (pluralityChoices.choices.size() > 1) {
+          } else if (List.size(pluralityChoices.choices) > 1) {
             // If everyone has voted and there is a tie -> undetermined
             if (undecidedVotingPower <= 0) {
               return #determined(null);
@@ -390,24 +390,22 @@ module {
   /// Creates a new proposal with the specified parameters.
   ///
   /// ```motoko
-  /// let id : Nat = 1;
   /// let proposerId : Principal = ...;
   /// let content = { /* Your proposal content */ };
   /// let members : [Member] = [{ id = ...; votingPower = 100 }];
   /// let timeStart : Time.Time = Time.now();
   /// let timeEnd : ?Time.Time = ?(timeStart + 24 * 60 * 60 * 1_000_000_000); // 24 hours
   /// let votingMode : VotingMode = #snapshot;
-  /// let proposal : Proposal<MyContent, MyChoice> = create(id, proposerId, content, members, timeStart, timeEnd, votingMode);
+  /// let proposal : ProposalData<MyContent, MyChoice> = create(proposerId, content, members, timeStart, timeEnd, votingMode);
   /// ```
   public func create<TProposalContent, TChoice>(
-    id : Nat,
     proposerId : Principal,
     content : TProposalContent,
     members : [Member],
     timeStart : Time.Time,
     timeEnd : ?Time.Time,
     votingMode : VotingMode,
-  ) : Proposal<TProposalContent, TChoice> {
+  ) : ProposalData<TProposalContent, TChoice> {
     let votes = BTree.init<Principal, Vote<TChoice>>(null);
     for (member in members.vals()) {
       ignore BTree.insert(
@@ -418,7 +416,6 @@ module {
       );
     };
     {
-      id = id;
       proposerId = proposerId;
       content = content;
       timeStart = timeStart;

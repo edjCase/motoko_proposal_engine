@@ -1,22 +1,22 @@
-import Principal "mo:base/Principal";
-import Nat32 "mo:base/Nat32";
-import Debug "mo:base/Debug";
-import Nat "mo:base/Nat";
-import Iter "mo:base/Iter";
-import HashMap "mo:base/HashMap";
-import Time "mo:base/Time";
-import Timer "mo:base/Timer";
-import Int "mo:base/Int";
-import Error "mo:base/Error";
-import Order "mo:base/Order";
-import IterTools "mo:itertools/Iter";
-import Result "mo:base/Result";
+import Principal "mo:core/Principal";
+import Debug "mo:core/Debug";
+import Nat "mo:core/Nat";
+import Iter "mo:core/Iter";
+import Map "mo:core/Map";
+import Time "mo:core/Time";
+import Timer "mo:core/Timer";
+import Int "mo:core/Int";
+import Error "mo:core/Error";
+import Order "mo:core/Order";
+import Result "mo:core/Result";
+import Runtime "mo:core/Runtime";
 import ExtendedProposal "ExtendedProposal";
+import BTree "mo:stableheapbtreemap/BTree";
 
 module {
 
   public type StableData<TProposalContent, TChoice> = {
-    proposals : [Proposal<TProposalContent, TChoice>];
+    proposals : BTree.BTree<Nat, ProposalData<TProposalContent, TChoice>>;
     proposalDuration : ?Duration;
     votingThreshold : VotingThreshold;
     allowVoteChange : Bool;
@@ -38,6 +38,8 @@ module {
   public type Member = ExtendedProposal.Member;
 
   public type Proposal<TProposalContent, TChoice> = ExtendedProposal.Proposal<TProposalContent, TChoice>;
+
+  public type ProposalData<TProposalContent, TChoice> = ExtendedProposal.ProposalData<TProposalContent, TChoice>;
 
   public type ProposalStatus<TChoice> = ExtendedProposal.ProposalStatus<TChoice>;
 
@@ -66,44 +68,31 @@ module {
     #proposalNotFound;
   };
 
-  type ProposalWithTimer<TProposalContent, TChoice> = Proposal<TProposalContent, TChoice> and {
-    var endTimerId : ?Nat;
-  };
-
   public class ProposalEngine<system, TProposalContent, TChoice>(
     data : StableData<TProposalContent, TChoice>,
     onProposalExecute : (?TChoice, Proposal<TProposalContent, TChoice>) -> async* Result.Result<(), Text>,
     onProposalValidate : TProposalContent -> async* Result.Result<(), [Text]>,
-    equalChoice : (TChoice, TChoice) -> Bool,
-    hashChoice : (TChoice) -> Nat32,
+    compareChoice : (TChoice, TChoice) -> Order.Order,
   ) {
 
-    var proposals = data.proposals.vals()
-    |> Iter.map<Proposal<TProposalContent, TChoice>, (Nat, ProposalWithTimer<TProposalContent, TChoice>)>(
-      _,
-      func(proposal : Proposal<TProposalContent, TChoice>) : (Nat, ProposalWithTimer<TProposalContent, TChoice>) = (
-        proposal.id,
-        {
-          proposal with
-          var endTimerId : ?Nat = null;
-        },
-      ),
-    )
-    |> HashMap.fromIter<Nat, ProposalWithTimer<TProposalContent, TChoice>>(_, 0, Nat.equal, Nat32.fromNat);
+    let proposals = data.proposals;
+    let endTimerIds = Map.empty<Nat, Nat>(); // Map to track end timer IDs by proposal ID
 
-    var nextProposalId = data.proposals.size() + 1; // TODO make last proposal + 1
+    var nextProposalId = BTree.size(data.proposals) + 1; // TODO make last proposal + 1
 
     let proposalDuration = data.proposalDuration;
     let votingThreshold = data.votingThreshold;
     let allowVoteChange = data.allowVoteChange;
 
     private func resetEndTimers<system>() {
-      for (proposal in proposals.vals()) {
-        switch (proposal.endTimerId) {
+      for ((proposalId, proposal) in BTree.entries(proposals)) {
+        switch (Map.get(endTimerIds, Nat.compare, proposalId)) {
           case (null) ();
-          case (?id) Timer.cancelTimer(id);
+          case (?id) {
+            Timer.cancelTimer(id);
+            Map.remove(endTimerIds, Nat.compare, proposalId);
+          };
         };
-        proposal.endTimerId := null;
         switch (proposal.status) {
           case (#open) {
             switch (proposal.timeEnd) {
@@ -112,14 +101,14 @@ module {
                 if (timeEnd > currentTime) {
                   // Only create timer if proposal hasn't expired yet
                   let remainingNanoseconds = Int.abs(timeEnd - currentTime);
-                  let endTimerId = createEndTimer<system>(proposal.id, remainingNanoseconds);
-                  proposal.endTimerId := ?endTimerId;
+                  let endTimerId = createEndTimer<system>(proposalId, remainingNanoseconds);
+                  Map.add(endTimerIds, Nat.compare, proposalId, endTimerId);
                 } else {
                   // Proposal has already expired, end it immediately
                   // Note: We can't call endProposal here directly as it's async*,
                   // but the timer mechanism will handle this
-                  let endTimerId = createEndTimer<system>(proposal.id, 1); // 1 nanosecond delay
-                  proposal.endTimerId := ?endTimerId;
+                  let endTimerId = createEndTimer<system>(proposalId, 1); // 1 nanosecond delay
+                  Map.add(endTimerIds, Nat.compare, proposalId, endTimerId);
                 };
               };
               case (null) {}; // No end time, skip timer creation
@@ -133,10 +122,16 @@ module {
     ///
     /// ```motoko
     /// let proposalId : Nat = 1;
-    /// let ?proposal : ?Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Debug.trap("Proposal not found");
+    /// let ?proposal : ?Proposal<TProposalContent, TChoice> = proposalEngine.getProposal(proposalId) else Runtime.trap("Proposal not found");
     /// ```
     public func getProposal(id : Nat) : ?Proposal<TProposalContent, TChoice> {
-      proposals.get(id);
+      do ? {
+        let proposalData = BTree.get(proposals, Nat.compare, id)!;
+        {
+          proposalData with
+          id = id
+        };
+      };
     };
 
     /// Retrieves a paged list of proposals.
@@ -147,21 +142,29 @@ module {
     /// let pagedResult : PagedResult<Proposal<ProposalContent>> = proposalEngine.getProposals(count, offset);
     /// ```
     public func getProposals(count : Nat, offset : Nat) : PagedResult<Proposal<TProposalContent, TChoice>> {
-      let vals = proposals.vals()
-      |> IterTools.sort(
+      let vals = proposals
+      |> BTree.entries(_)
+      |> Iter.sort(
         _,
-        func(proposalA : Proposal<TProposalContent, TChoice>, proposalB : Proposal<TProposalContent, TChoice>) : Order.Order {
+        func((_, proposalA) : (Nat, ProposalData<TProposalContent, TChoice>), (_, proposalB) : (Nat, ProposalData<TProposalContent, TChoice>)) : Order.Order {
           Int.compare(proposalB.timeStart, proposalA.timeStart);
         },
       )
-      |> IterTools.skip(_, offset)
-      |> IterTools.take(_, count)
+      |> Iter.drop(_, offset)
+      |> Iter.take(_, count)
+      |> Iter.map(
+        _,
+        func((id : Nat, proposal : ProposalData<TProposalContent, TChoice>)) : Proposal<TProposalContent, TChoice> = {
+          proposal with
+          id = id;
+        },
+      )
       |> Iter.toArray(_);
       {
         data = vals;
         offset = offset;
         count = count;
-        totalCount = proposals.size();
+        totalCount = BTree.size(proposals);
       };
     };
 
@@ -170,10 +173,10 @@ module {
     /// ```motoko
     /// let proposalId : Nat = 1;
     /// let voterId : Principal = ...;
-    /// let ?vote : ?Vote<TChoice> = proposalEngine.getVote(proposalId, voterId) else Debug.trap("Vote not found");
+    /// let ?vote : ?Vote<TChoice> = proposalEngine.getVote(proposalId, voterId) else Runtime.trap("Vote not found");
     /// ```
     public func getVote(proposalId : Nat, voterId : Principal) : ?Vote<TChoice> {
-      let ?proposal = proposals.get(proposalId) else return null;
+      let ?proposal = Map.get(proposals, Nat.compare, proposalId) else return null;
 
       ExtendedProposal.getVote<TProposalContent, TChoice>(proposal, voterId);
     };
@@ -186,8 +189,8 @@ module {
     /// Debug.print("Total voting power: " # Nat.toText(summary.totalVotingPower));
     /// ```
     public func buildVotingSummary(proposalId : Nat) : VotingSummary<TChoice> {
-      let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
-      ExtendedProposal.buildVotingSummary(proposal, equalChoice, hashChoice);
+      let ?proposal = Map.get(proposals, Nat.compare, proposalId) else Runtime.trap("Proposal not found: " # Nat.toText(proposalId));
+      ExtendedProposal.buildVotingSummary(proposal, compareChoice);
     };
 
     /// Casts a vote on a proposal for the specified voter.
@@ -204,10 +207,10 @@ module {
     /// };
     /// ```
     public func vote(proposalId : Nat, voterId : Principal, vote : TChoice) : async* Result.Result<(), VoteError> {
-      let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
+      let ?proposal = Map.get(proposals, Nat.compare, proposalId) else return #err(#proposalNotFound);
       switch (ExtendedProposal.vote(proposal, voterId, vote, allowVoteChange)) {
         case (#ok) {
-          let choiceStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, false);
+          let choiceStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, compareChoice, false);
           switch (choiceStatus) {
             case (#determined(choice)) {
               await* executeProposal(proposalId, proposals, choice);
@@ -258,19 +261,19 @@ module {
         };
         case (null) (null, null);
       };
-      let proposal : ProposalWithTimer<TProposalContent, TChoice> = {
-        ExtendedProposal.create<TProposalContent, TChoice>(
-          proposalId,
-          proposerId,
-          content,
-          members,
-          timeStart,
-          timeEnd,
-          votingMode,
-        ) with
-        var endTimerId = endTimerId;
+      let proposal = ExtendedProposal.create<TProposalContent, TChoice>(
+        proposerId,
+        content,
+        members,
+        timeStart,
+        timeEnd,
+        votingMode,
+      );
+      ignore BTree.insert<Nat, ProposalData<TProposalContent, TChoice>>(proposals, Nat.compare, proposalId, proposal);
+      switch (endTimerId) {
+        case (null) ();
+        case (?endTimerId) Map.add(endTimerIds, Nat.compare, proposalId, endTimerId);
       };
-      proposals.put(nextProposalId, proposal);
       nextProposalId += 1;
       #ok(proposalId);
     };
@@ -290,7 +293,7 @@ module {
       proposalId : Nat,
       member : Member,
     ) : Result.Result<(), AddMemberResult> {
-      let ?proposal = proposals.get(proposalId) else return #err(#proposalNotFound);
+      let ?proposal = BTree.get(proposals, Nat.compare, proposalId) else return #err(#proposalNotFound);
 
       switch (ExtendedProposal.addMember(proposal, member)) {
         case (#ok) #ok;
@@ -310,10 +313,10 @@ module {
     /// };
     /// ```
     public func endProposal(proposalId : Nat) : async* Result.Result<(), { #alreadyEnded }> {
-      let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
+      let ?proposal = BTree.get(proposals, Nat.compare, proposalId) else Runtime.trap("Proposal not found for onProposalEnd: " # Nat.toText(proposalId));
       switch (proposal.status) {
         case (#open) {
-          let voteStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, equalChoice, hashChoice, true);
+          let voteStatus = ExtendedProposal.calculateVoteStatus(proposal, votingThreshold, compareChoice, true);
           let choice = switch (voteStatus) {
             case (#determined(choice)) choice;
             case (#undetermined) null;
@@ -331,11 +334,9 @@ module {
     /// let stableData : StableData<ProposalContent> = proposalEngine.toStableData();
     /// ```
     public func toStableData() : StableData<TProposalContent, TChoice> {
-      let proposalsArray = proposals.vals()
-      |> Iter.toArray(_);
 
       {
-        proposals = proposalsArray;
+        proposals = proposals;
         proposalDuration = proposalDuration;
         votingThreshold = votingThreshold;
         allowVoteChange = allowVoteChange;
@@ -368,31 +369,32 @@ module {
 
     private func executeProposal(
       proposalId : Nat,
-      proposals : HashMap.HashMap<Nat, ProposalWithTimer<TProposalContent, TChoice>>,
+      proposals : BTree.BTree<Nat, ProposalData<TProposalContent, TChoice>>,
       choice : ?TChoice,
     ) : async* () {
-      let ?proposal = proposals.get(proposalId) else Debug.trap("Proposal not found: " # Nat.toText(proposalId));
-      switch (proposal.endTimerId) {
+      let ?proposal = BTree.get(proposals, Nat.compare, proposalId) else Runtime.trap("Proposal not found: " # Nat.toText(proposalId));
+      switch (Map.get(endTimerIds, Nat.compare, proposalId)) {
         case (null) ();
-        case (?id) Timer.cancelTimer(id);
+        case (?id) {
+          Timer.cancelTimer(id);
+          Map.remove(endTimerIds, Nat.compare, proposalId);
+        };
       };
-      proposal.endTimerId := null;
 
       let executingTime = Time.now();
 
       let executingProposal = {
         proposal with
-        var endTimerId : ?Nat = null;
         status : ProposalStatus<TChoice> = #executing({
           executingTime = executingTime;
           choice = choice;
         });
       };
 
-      proposals.put(proposalId, executingProposal);
+      let ?_ = BTree.insert(proposals, Nat.compare, proposalId, executingProposal) else Runtime.trap("Proposal not found: " # Nat.toText(proposalId));
 
       let newStatus : ProposalStatus<TChoice> = try {
-        switch (await* onProposalExecute(choice, proposal)) {
+        switch (await* onProposalExecute(choice, { proposal with id = proposalId })) {
           case (#ok) #executed({
             executingTime = executingTime;
             executedTime = Time.now();
@@ -414,14 +416,15 @@ module {
         });
       };
 
-      proposals.put(
+      let ?_ = BTree.insert(
+        proposals,
+        Nat.compare,
         proposalId,
         {
           executingProposal with
-          var endTimerId : ?Nat = null;
           status = newStatus;
         },
-      );
+      ) else Runtime.trap("Proposal not found: " # Nat.toText(proposalId));
     };
 
     resetEndTimers<system>();

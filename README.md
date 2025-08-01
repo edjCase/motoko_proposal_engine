@@ -39,7 +39,7 @@ import ProposalEngine "mo:dao-proposal-engine/ProposalEngine";
 
 // Initialize with stable data
 let stableData = {
-    proposals = [];
+    proposals = BTree.init<Nat, ProposalEngine.ProposalData<MyProposalContent>>(null);
     proposalDuration = ?#days(7); // 7 day voting period
     votingThreshold = #percent({ percent = 50; quorum = ?25 });
     allowVoteChange = false;
@@ -79,8 +79,7 @@ let engine = ExtendedProposalEngine.ProposalEngine<system, MyProposalContent, My
     stableData,
     onProposalExecute, // Called with winning choice
     onProposalValidate, // Validates proposal content
-    MyChoice.equal, // Choice equality function
-    MyChoice.hash // Choice hash function
+    MyChoice.compare, // Choice compare function
 );
 
 // Create proposal with dynamic voting
@@ -386,8 +385,7 @@ ProposalEngine<system, TProposalContent, TChoice>(
     data: StableData<TProposalContent, TChoice>,
     onProposalExecute: (?TChoice, Proposal<TProposalContent, TChoice>) -> async* Result.Result<(), Text>,
     onProposalValidate: TProposalContent -> async* Result.Result<(), [Text]),
-    equalChoice: (TChoice, TChoice) -> Bool,
-    hashChoice: (TChoice) -> Nat32
+    compareChoice: (TChoice, TChoice) -> Order.Order,
 )
 ```
 
